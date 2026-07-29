@@ -216,6 +216,41 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
     </div>
   </section>
 
+  <!-- 5 ------------------------------------------------------------------ -->
+  <section class="etape" id="e5" data-inactif="1">
+    <div class="enTete"><span class="rang">5</span><h2>Références et plans</h2>
+      <div class="aide">Le contrôle conditionne l'édition de la fiche</div></div>
+    <div class="contenu">
+      <div class="avis" id="avisRef">
+        Une référence introuvable au millésime courant rend l'état hypothécaire sans valeur :
+        le service répond « 0 formalité » pour les parcelles <strong>demandées</strong>, et cette
+        réponse est indiscernable d'une parcelle saine. Tant qu'une référence n'est pas confirmée,
+        la fiche ne s'édite pas.
+      </div>
+      <div class="ligneControles" style="margin-bottom:14px">
+        <div>
+          <label class="champ" for="inseeTous">Code INSEE à appliquer aux lignes vides</label>
+          <input type="text" id="inseeTous" placeholder="59009" style="max-width:140px" autocomplete="off">
+        </div>
+        <button class="sec" id="btnInsee">Appliquer</button>
+        <button id="btnControler">Contrôler et préparer</button>
+      </div>
+      <div class="progression" id="progRef" hidden></div>
+      <div class="cadreTable">
+        <table>
+          <thead><tr>
+            <th style="width:64px">N°</th>
+            <th style="width:92px">INSEE</th>
+            <th style="width:26%">Parcelles</th>
+            <th style="width:16%">Contrôle</th>
+            <th>Plan cadastral</th>
+          </tr></thead>
+          <tbody id="corpsRef"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
   <details class="journal" id="journal">
     <summary>Journal de diagnostic</summary>
     <pre id="journalTexte" class="vide">Rien à signaler pour l'instant.</pre>
@@ -284,6 +319,165 @@ const MODELES = [
   {id:"risques", t:"Note de risques consolidée", d:"Les seuls feux rouges du portefeuille, triés par gravité.", pret:false},
   {id:"clauses", t:"Clauses d'origine de propriété", d:"Les clauses seules, prêtes à intégrer aux actes.", pret:false}
 ];
+
+/* =====================================================================
+   MODULE CADASTRE — contrôle des références, projection, liens PAINT
+   Projection Lambert conique conforme CC42-CC50 (EPSG 9802, GRS80).
+   Validée contre le point de contrôle du mémo PAINT § 6 :
+   lat 50,746266 / lon 2,254079 → X=1647353,92 Y=9283269,59
+   là où le service affiche 1647353,92 / 9283269,63, soit 4 cm.
+   ===================================================================== */
+const A_ELL = 6378137.0, F_APL = 1 / 298.257222101;
+const E2 = 2 * F_APL - F_APL * F_APL, E_ELL = Math.sqrt(E2);
+const rad = (d) => (d * Math.PI) / 180;
+const zoneCC = (lat) => Math.min(50, Math.max(42, Math.round(lat)));
+
+function faireProjecteur(n){
+  const p0 = rad(n), p1 = rad(n - 0.75), p2 = rad(n + 0.75), l0 = rad(3);
+  const X0 = 1700000, Y0 = (n - 41) * 1000000 + 200000;
+  const t = (p) => Math.tan(Math.PI/4 - p/2) /
+        Math.pow((1 - E_ELL*Math.sin(p)) / (1 + E_ELL*Math.sin(p)), E_ELL/2);
+  const m = (p) => Math.cos(p) / Math.sqrt(1 - E2*Math.sin(p)*Math.sin(p));
+  const nn = Math.log(m(p1)/m(p2)) / Math.log(t(p1)/t(p2));
+  const FF = m(p1) / (nn * Math.pow(t(p1), nn));
+  const r0 = A_ELL * FF * Math.pow(t(p0), nn);
+  return (lon, lat) => {
+    const r = A_ELL * FF * Math.pow(t(rad(lat)), nn);
+    const th = nn * (rad(lon) - l0);
+    return [X0 + r*Math.sin(th), Y0 + r0 - r*Math.cos(th)];
+  };
+}
+
+/* Anneau extérieur du polygone ou du multipolygone GeoJSON. */
+function anneau(geom){
+  if(!geom) return null;
+  if(geom.type === "Polygon") return geom.coordinates[0];
+  if(geom.type === "MultiPolygon"){
+    let best = null;
+    for(const poly of geom.coordinates){
+      const r = poly[0];
+      if(!best || r.length > best.length) best = r;
+    }
+    return best;
+  }
+  return null;
+}
+
+/* Réduit à 40 sommets — contrainte des liens hypertexte d'Excel. */
+function simplifier(pts, max = 40){
+  if(pts.length <= max) return pts;
+  const pas = Math.ceil(pts.length / max), out = [];
+  for(let i = 0; i < pts.length; i += pas) out.push(pts[i]);
+  return out;
+}
+
+/* Point intérieur par lancer de rayon : on retient le milieu du plus long
+   segment intérieur, ce qui tient sur les rubans là où une grille échoue. */
+function pointInterieur(pts){
+  const ys = pts.map(p => p[1]), xs = pts.map(p => p[0]);
+  const y0 = Math.min(...ys), y1 = Math.max(...ys);
+  let meilleur = null;
+  for(let k = 1; k < 40; k++){
+    const y = y0 + (y1 - y0) * k / 40;
+    const xi = [];
+    for(let i = 0, j = pts.length - 1; i < pts.length; j = i++){
+      const [ax, ay] = pts[i], [bx, by] = pts[j];
+      if((ay > y) !== (by > y)) xi.push(ax + (y - ay) / (by - ay) * (bx - ax));
+    }
+    xi.sort((a, b) => a - b);
+    for(let i = 0; i + 1 < xi.length; i += 2){
+      const l = xi[i+1] - xi[i];
+      if(!meilleur || l > meilleur.l) meilleur = { l, x: (xi[i] + xi[i+1]) / 2, y };
+    }
+  }
+  return meilleur ? [meilleur.x, meilleur.y]
+                  : [(Math.min(...xs) + Math.max(...xs)) / 2, (y0 + y1) / 2];
+}
+
+const haCa = (m2) => {
+  const ha = Math.floor(m2 / 10000), a = Math.floor((m2 % 10000) / 100), ca = Math.round(m2 % 100);
+  return `${ha} ha ${String(a).padStart(2,"0")} a ${String(ca).padStart(2,"0")} ca`;
+};
+
+/* Contrôle d'une référence au millésime courant. Une réponse vide vaut
+   référence périmée : c'est ce contrôle qui conditionne l'édition de la fiche. */
+async function controlerParcelle(insee, section, numero){
+  const sec = section.toUpperCase().padStart(2, "0");
+  const essais = [numero.padStart(4, "0"), String(Number(numero))];
+  for(const num of essais){
+    const u = new URL("https://apicarto.ign.fr/api/cadastre/parcelle");
+    u.searchParams.set("code_insee", insee);
+    u.searchParams.set("section", sec);
+    u.searchParams.set("numero", num);
+    let rep;
+    try { rep = await fetch(u); } catch(e){ return { statut:"erreur", motif:"réseau : "+e.message }; }
+    if(!rep.ok) return { statut:"erreur", motif:`API Carto ${rep.status}` };
+    const j = await rep.json();
+    const f = (j.features || [])[0];
+    if(!f) continue;
+    const ring = anneau(f.geometry);
+    if(!ring) return { statut:"erreur", motif:"géométrie absente" };
+    const lat = ring.reduce((s,p) => s + p[1], 0) / ring.length;
+    const n = zoneCC(lat), proj = faireProjecteur(n);
+    const pts = ring.map(([lo, la]) => proj(lo, la));
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const largeur = Math.max(...xs) - Math.min(...xs);
+    const hauteur = Math.max(...ys) - Math.min(...ys);
+    return {
+      statut: "conforme", section: sec, numero: num,
+      contenance: f.properties && f.properties.contenance ? Number(f.properties.contenance) : null,
+      zone: n, pts, largeur, hauteur,
+      bbox: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
+      pt: pointInterieur(pts),
+      poly: simplifier(pts),
+    };
+  }
+  return { statut: "introuvable", motif: "aucune parcelle à ce millésime" };
+}
+
+/* Échelle : la plus fine des valeurs du service qui contient l'emprise AVEC
+   du voisinage — un plan cadré au ras du terrain ne vaut rien comme pièce.
+   Plancher à 1/500, plafond 1/5000 : au-delà le service sert silencieusement
+   du 1/1000. Le cadre est COMMUN à toutes les parcelles de l'immeuble. */
+const ECHELLES = [500, 650, 1000, 1250, 1500, 2000, 2500, 4000, 5000];
+const EMPRISES = { "A4|portrait":[195.5,211.0], "A4|paysage":[210.7,197.0],
+                   "A3|portrait":[281.5,301.0], "A3|paysage":[316.0,283.0] };
+function choisirCadre(largeur, hauteur, marge = 2.2){
+  const l = largeur * marge, h = hauteur * marge;
+  const formats = l > h
+    ? ["A4|paysage","A4|portrait","A3|paysage","A3|portrait"]
+    : ["A4|portrait","A4|paysage","A3|portrait","A3|paysage"];
+  /* L'A4 d'abord, sur toute la gamme d'échelles : la fiche est en A4 et le plan
+     y est collé en image. On ne passe à l'A3 que si aucune échelle ne suffit. */
+  for(const fmt of formats) for(const ech of ECHELLES){
+    const [L, H] = EMPRISES[fmt];
+    if(l <= L * ech / 1000 && h <= H * ech / 1000)
+      return { echelle: ech, format: fmt, tient: true };
+  }
+  return { echelle: 5000, format: "A3|paysage", tient: false };
+}
+
+function lienPaint(insee, nomCommune, r, tab, total, cadre){
+  const q = new URLSearchParams();
+  q.set("commune", insee);
+  if(nomCommune) q.set("nomCommune", nomCommune);
+  q.set("prefixe", "000");
+  q.set("section", r.section);
+  q.set("parcelle", String(Number(r.numero)));
+  q.set("echelle", String(cadre.echelle));
+  q.set("format", cadre.format);
+  q.set("couleur", "#A01040");
+  q.set("crs", "CC" + r.zone);
+  q.set("dim", `${Math.round(r.largeur)}x${Math.round(r.hauteur)}`);
+  if(r.contenance) q.set("surface", String(r.contenance));
+  q.set("pt", `${r.pt[0].toFixed(2)},${r.pt[1].toFixed(2)}`);
+  q.set("poly", r.poly.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(";"));
+  if(tab) q.set("tab", tab);
+  if(total) q.set("total", total);
+  q.set("auto", "1");
+  q.set("cb", String(Date.now()).slice(-6));
+  return "https://paint-blue.vercel.app/?" + q.toString();
+}
 
 /* ---------------------------------------------------------------------- */
 const E = id => document.getElementById(id);
@@ -466,7 +660,7 @@ E("btnScan").onclick = async () => {
     const nbDev = imm.reduce((s,i) => s + i.pieces.filter(p => p.source !== "charte").length, 0);
     noter(`${imm.length} immeubles, ${nbP} pièces, dont ${nbDev} typée(s) par repli ou non typée(s).`,"scan");
     progresser(`${imm.length} immeubles lus.`);
-    dessiner(); activer("e3", true); activer("e4", true);
+    dessiner(); activer("e3", true); activer("e4", true); activer("e5", true);
   }catch(e){
     progresser("La lecture a échoué. Le journal indique la cause.");
     noter("Échec : "+e.message,"scan");
@@ -521,6 +715,7 @@ function dessiner(){
       cb.closest("tr").dataset.sel = cb.checked ? "1" : "0"; synthese(); };
   });
   synthese();
+  if(E("corpsRef")) dessinerRef();
 }
 function echapper(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
 function synthese(){
@@ -545,7 +740,102 @@ E("btnIncomplets").onclick = () => {
 };
 E("fMasquer").onchange = dessiner;
 
-/* ---------- 4. modèles ------------------------------------------------ */
+/* ---------- 5. références et plans ------------------------------------ */
+function refsInitiales(i){
+  const vues = new Set();
+  i.pieces.forEach(p => (p.parcelles || []).forEach(r => vues.add(r)));
+  return [...vues].join(" ");
+}
+function dessinerRef(){
+  const tb = E("corpsRef"); tb.innerHTML = "";
+  retenus().forEach((i) => {
+    const k = etat.immeubles.indexOf(i);
+    if(i.insee === undefined) i.insee = "";
+    if(i.refs === undefined) i.refs = refsInitiales(i);
+    const c = i.controle;
+    let etatTxt = '<span class="puces">non contrôlé</span>', plan = "";
+    if(c){
+      const ok = c.filter(r => r.statut === "conforme").length;
+      const ko = c.length - ok;
+      etatTxt = ko
+        ? `<span class="anom">${ko} référence(s) en défaut</span>`
+        : `<span style="color:var(--canard)">${ok} conforme(s)</span>`;
+      plan = c.filter(r => r.lien).map(r =>
+        `<a href="${r.lien}" target="_blank" rel="noopener">${r.section} ${Number(r.numero)}</a>` +
+        `<span class="puces"> 1/${r.echelle} ${r.format}${r.contenance ? " · " + haCa(r.contenance) : ""}</span>`
+      ).join("<br>") || '<span class="anom">aucun plan : référence à corriger</span>';
+    }
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="num">${i.numero || "—"}</td>
+      <td><input type="text" data-k="${k}" data-ch="insee" value="${echapper(i.insee)}"
+          style="max-width:78px;padding:5px 7px;font-size:13px" placeholder="59009"></td>
+      <td><input type="text" data-k="${k}" data-ch="refs" value="${echapper(i.refs)}"
+          style="padding:5px 7px;font-size:13px" placeholder="NL113 NL117 NL294"></td>
+      <td>${etatTxt}</td>
+      <td>${plan}</td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll("input").forEach(inp => {
+    inp.onchange = () => { etat.immeubles[+inp.dataset.k][inp.dataset.ch] = inp.value.trim(); };
+  });
+}
+E("btnInsee").onclick = () => {
+  const v = E("inseeTous").value.trim();
+  if(!/^\d{5}$/.test(v)){ E("progRef").hidden = false; E("progRef").textContent = "Le code INSEE compte cinq chiffres."; return; }
+  retenus().forEach(i => { if(!i.insee) i.insee = v; });
+  dessinerRef(); noter(`INSEE ${v} appliqué aux lignes vides.`,"refs");
+};
+E("btnControler").onclick = async () => {
+  const sel = retenus().filter(i => i.insee && i.refs);
+  if(!sel.length){ E("progRef").hidden = false; E("progRef").textContent = "Renseigne au moins un code INSEE et une liste de parcelles."; return; }
+  E("btnControler").disabled = true;
+  let n = 0;
+  for(const i of sel){
+    const refs = i.refs.split(/[\s,;]+/).filter(Boolean);
+    i.controle = [];
+    for(const ref of refs){
+      const m = ref.toUpperCase().match(/^([A-Z]{1,2})\s?0*(\d{1,4})$/);
+      if(!m){ i.controle.push({ statut:"erreur", motif:`référence illisible : ${ref}` });
+              noter(`Référence illisible sur ${i.numero} : ${ref}`,"refs"); continue; }
+      const r = await controlerParcelle(i.insee, m[1], m[2]);
+      if(r.statut === "conforme"){
+        noter(`${i.numero} ${ref} : conforme, CC${r.zone}, `
+          + `${Math.round(r.largeur)}×${Math.round(r.hauteur)} m`
+          + (r.contenance ? `, ${haCa(r.contenance)}` : ", contenance non fournie") + ".", "refs");
+      } else {
+        noter(`${i.numero} ${ref} : ${r.statut} — ${r.motif}`,"refs");
+      }
+      i.controle.push(r);
+    }
+
+    /* Cadre COMMUN à l'immeuble : emprise réunie de ses parcelles conformes. */
+    const ok = i.controle.filter(r => r.statut === "conforme");
+    if(ok.length){
+      const b = ok.reduce((u, r) => [Math.min(u[0], r.bbox[0]), Math.min(u[1], r.bbox[1]),
+                                     Math.max(u[2], r.bbox[2]), Math.max(u[3], r.bbox[3])], ok[0].bbox);
+      const cadre = choisirCadre(b[2] - b[0], b[3] - b[1]);
+      const tab = ok.map(r => `${r.section},${Number(r.numero)},${r.contenance || ""}`).join(";");
+      const total = ok.length > 1 && ok.every(r => r.contenance)
+        ? haCa(ok.reduce((s, r) => s + r.contenance, 0)) : "";
+      ok.forEach(r => {
+        r.echelle = cadre.echelle; r.format = cadre.format;
+        r.lien = lienPaint(i.insee, "", r, tab, total, cadre);
+      });
+      noter(`${i.numero} : emprise réunie ${Math.round(b[2]-b[0])}×${Math.round(b[3]-b[1])} m, `
+        + `cadre commun 1/${cadre.echelle} ${cadre.format}`
+        + (cadre.tient ? "" : " — DÉBORDE, prévoir un plan par groupe contigu")
+        + (total ? `, total ${total}` : ""), "plan");
+    }
+    n++; E("progRef").hidden = false;
+    E("progRef").textContent = `Contrôle… ${n}/${sel.length}`;
+    dessinerRef();
+  }
+  E("progRef").textContent = `${n} immeuble(s) contrôlé(s).`;
+  E("btnControler").disabled = false;
+};
+
+
 E("modeles").innerHTML = MODELES.map(m => `
   <label class="modele" ${m.pret ? "" : 'aria-disabled="true"'}>
     <span class="t"><input type="radio" name="modele" value="${m.id}"
@@ -572,6 +862,10 @@ E("btnManifeste").onclick = () => {
     dossierRacine:etat.racine, nbImmeubles:sel.length,
     immeubles: sel.map(i => ({
       numero:i.numero, libelle:i.libelle, folderId:i.folderId, statut:classe(i),
+      insee:i.insee || null, refs:i.refs || null,
+      cadastre:(i.controle || []).map(r => ({ statut:r.statut, motif:r.motif || null,
+        section:r.section || null, numero:r.numero || null, contenance:r.contenance || null,
+        zone:r.zone || null, echelle:r.echelle || null, format:r.format || null, lien:r.lien || null })),
       anomalies:i.anomalies,
       pieces:i.pieces.map(p => ({ type:p.type, libelleType:TYPES[p.type]||p.type, source:p.source,
         dateActe:p.dateActe, parcelles:p.parcelles, nom:p.nom, fileId:p.fileId, mimeType:p.mimeType,
