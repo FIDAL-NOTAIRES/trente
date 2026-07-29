@@ -220,8 +220,21 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
       <div class="modeles" id="modeles"></div>
       <div class="ligneControles">
         <button id="btnRendre">Produire le rendu</button>
+        <button class="sec" id="btnChoisir">Choisir les fiches à éditer</button>
         <button class="sec" id="btnManifeste">Exporter le manifeste (JSON)</button>
         <span id="etatRendu" style="font-size:13.5px;color:var(--grisbleu)"></span>
+      </div>
+      <div id="panneauFiches" hidden style="margin-top:16px;border:1px solid var(--filet);padding:14px;background:var(--papier)">
+        <div class="filtres" style="margin-bottom:10px">
+          <button class="sec" id="btnFichesTout">Tout sélectionner</button>
+          <button class="sec" id="btnFichesRien">Tout désélectionner</button>
+          <span class="puces" id="compteFiches"></span>
+        </div>
+        <div id="communes" style="max-height:40vh;overflow:auto"></div>
+        <div class="ligneControles" style="margin-top:14px">
+          <button id="btnEditerFiches">Valider et produire le document</button>
+          <span id="etatFiches" style="font-size:13.5px;color:var(--grisbleu)"></span>
+        </div>
       </div>
     </div>
   </section>
@@ -275,6 +288,7 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"></script>
 <script>
 /* =====================================================================
    TRENTE — couche inventaire
@@ -437,6 +451,7 @@ async function controlerParcelle(insee, section, numero){
     return {
       statut: "conforme", section: sec, numero: num,
       contenance: f.properties && f.properties.contenance ? Number(f.properties.contenance) : null,
+      commune: (f.properties && (f.properties.nom_com || f.properties.nom_commune)) || null,
       zone: n, pts, largeur, hauteur,
       bbox: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
       bboxWGS: [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)],
@@ -997,6 +1012,221 @@ E("btnRendre").onclick = async () => {
   catch(e){ E("etatRendu").textContent = "Échec de la construction."; noter("Excel : "+e.message,"export"); }
   E("btnRendre").disabled = false;
 };
+
+/* =====================================================================
+   ÉDITION DES FICHES — sélection par commune puis document unique
+   ===================================================================== */
+const DOSSIER_LIB = "AUDIT FUSION LOGIS MÉTROPOLE";
+const A_COMPLETER = "À compléter par l'analyse du titre de propriété et de l'état hypothécaire.";
+
+function communeDe(i){
+  const c = (i.controle || []).find(r => r.commune);
+  return c ? c.commune : (i.insee ? "Commune " + i.insee : "Commune non renseignée");
+}
+/* Commune connue d'abord, par ordre alphabétique ; les immeubles dont la commune
+   n'est pas établie ferment la liste, pour ne pas se glisser au milieu. */
+const rangCommune = (i) => ((i.controle || []).some(r => r.commune) ? 0 : 1);
+function immeublesTries(){
+  return etat.immeubles.slice().sort((a, b) => {
+    const ra = rangCommune(a), rb = rangCommune(b);
+    if(ra !== rb) return ra - rb;
+    const ca = communeDe(a), cb = communeDe(b);
+    if(ca !== cb) return ca.localeCompare(cb, "fr");
+    return (a.numero || "zzzz").localeCompare(b.numero || "zzzz");
+  });
+}
+function dessinerCommunes(){
+  const groupes = new Map();
+  immeublesTries().forEach(i => {
+    const c = communeDe(i);
+    if(!groupes.has(c)) groupes.set(c, []);
+    groupes.get(c).push(i);
+  });
+  E("communes").innerHTML = [...groupes.entries()].map(([c, l]) => `
+    <div style="margin-bottom:12px">
+      <div style="font-family:Georgia,serif;font-size:14px;color:var(--nuit);margin-bottom:5px">
+        ${echapper(c)} <span class="puces">${l.length} immeuble(s)</span>
+        <button class="sec" data-com="${echapper(c)}" style="padding:2px 8px;font-size:12px;margin-left:8px">tout</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px 14px">
+        ${l.map(i => {
+          const k = etat.immeubles.indexOf(i);
+          return `<label style="font-size:13px;display:flex;gap:5px;align-items:center;cursor:pointer">
+            <input type="checkbox" data-f="${k}" ${i.fiche ? "checked" : ""}>
+            <span class="num" style="font-family:Georgia,serif">${i.numero || "—"}</span></label>`;
+        }).join("")}
+      </div>
+    </div>`).join("") || '<span class="puces">Aucun immeuble lu.</span>';
+
+  E("communes").querySelectorAll("input[type=checkbox]").forEach(cb => {
+    cb.onchange = () => { etat.immeubles[+cb.dataset.f].fiche = cb.checked; compterFiches(); };
+  });
+  E("communes").querySelectorAll("button[data-com]").forEach(b => {
+    b.onclick = () => {
+      etat.immeubles.forEach(i => { if(communeDe(i) === b.dataset.com) i.fiche = true; });
+      dessinerCommunes();
+    };
+  });
+  compterFiches();
+}
+function compterFiches(){
+  const n = etat.immeubles.filter(i => i.fiche).length;
+  E("compteFiches").textContent = n ? `${n} fiche(s) retenue(s)` : "aucune fiche retenue";
+}
+E("btnChoisir").onclick = () => {
+  const p = E("panneauFiches");
+  p.hidden = !p.hidden;
+  if(!p.hidden){
+    if(etat.immeubles.every(i => i.fiche === undefined))
+      etat.immeubles.forEach(i => { i.fiche = i.selection; });
+    dessinerCommunes();
+  }
+};
+E("btnFichesTout").onclick = () => { etat.immeubles.forEach(i => i.fiche = true); dessinerCommunes(); };
+E("btnFichesRien").onclick = () => { etat.immeubles.forEach(i => i.fiche = false); dessinerCommunes(); };
+
+/* ---------- construction du document ---------- */
+function sectionsFiches(D, liste){
+  const { Paragraph, TextRun, Table, TableRow, TableCell, TableLayoutType, WidthType,
+          ShadingType, BorderStyle, AlignmentType, Header, Footer, PageNumber,
+          UnderlineType, VerticalAlign, ExternalHyperlink } = D;
+  const NUIT="0F2238", GRIS="657D96", CANARD="33838B", ORANGE="FF982D", CARMIN="A01040";
+  const SANS="Segoe UI", SERIF="Georgia", L=9072;
+  const filet = { style: BorderStyle.SINGLE, size: 4, color: "E1E5EA" };
+
+  const p = (txt, o={}) => new Paragraph({
+    alignment: o.al || AlignmentType.JUSTIFIED,
+    spacing: { after: o.after === undefined ? 120 : o.after, before: o.before || 0, line: 240 },
+    children: [new TextRun({ text: txt, font: o.font || SANS, size: o.size || 20,
+      color: o.color || "1A1A1A", bold: o.bold, italics: o.it,
+      underline: o.u ? { type: UnderlineType.SINGLE } : undefined })] });
+  const t1 = (s) => p(s, { al: AlignmentType.LEFT, bold:true, u:true, size:24, color:NUIT, before:320, after:160 });
+  const t2 = (s) => p(s, { al: AlignmentType.LEFT, bold:true, size:21, color:NUIT, before:200, after:120 });
+  const attente = () => p(A_COMPLETER, { it:true, color:GRIS, size:18 });
+  const lien = (txt, url) => new Paragraph({ spacing:{ after:120, line:240 }, children:[
+    new ExternalHyperlink({ link:url, children:[
+      new TextRun({ text:txt, font:SANS, size:19, color:CANARD, underline:{ type:UnderlineType.SINGLE } })] })] });
+
+  const cell = (txt, w, o={}) => new TableCell({
+    width:{ size:w, type:WidthType.DXA },
+    shading: o.fill ? { type:ShadingType.CLEAR, fill:o.fill, color:"auto" } : undefined,
+    margins:{ top:60, bottom:60, left:100, right:100 }, verticalAlign:VerticalAlign.TOP,
+    children:[new Paragraph({ spacing:{ after:0, line:240 },
+      children:[new TextRun({ text:txt, font:SANS, size:o.size||18, color:o.color||"1A1A1A",
+        bold:o.bold, italics:o.it })] })] });
+  const table = (ws, labels, lignes) => new Table({
+    columnWidths: ws, width:{ size:L, type:WidthType.DXA }, layout:TableLayoutType.FIXED,
+    borders:{ top:filet, bottom:filet, left:filet, right:filet,
+              insideHorizontal:filet, insideVertical:filet },
+    rows:[ new TableRow({ tableHeader:true,
+      children: labels.map((t,k) => cell(t, ws[k], { bold:true, color:"FFFFFF", fill:NUIT })) }),
+      ...lignes ] });
+
+  return liste.map((i) => {
+    const com = communeDe(i);
+    const ctrl = i.controle || [];
+    const wD = [1300, 1600, 6172];
+
+    /* 1.1 — depuis l'API Carto, donc déterministe */
+    const lignesD = ctrl.length ? ctrl.map(r => new TableRow({ children:[
+      cell(r.statut === "conforme" ? `${r.section} ${Number(r.numero)}` : (r.motif || "référence en défaut"),
+           wD[0], { bold:true, color: r.statut === "conforme" ? "1A1A1A" : CARMIN }),
+      cell(r.contenance ? haCa(r.contenance) : "non fournie", wD[1],
+           { color: r.contenance ? "1A1A1A" : ORANGE }),
+      cell(r.statut === "conforme" ? A_COMPLETER : "Référence introuvable au millésime courant : la fiche ne peut être éditée en l'état.",
+           wD[2], { it: r.statut === "conforme", color: r.statut === "conforme" ? GRIS : CARMIN, size:18 }) ]}))
+      : [new TableRow({ children:[
+          cell("—", wD[0]), cell("—", wD[1]),
+          cell("Références non contrôlées. Le contrôle au millésime courant conditionne l'édition de la fiche.", wD[2], { color:CARMIN }) ]})];
+
+    /* 4.2 — déterministe : ce que l'inventaire sait manquer */
+    const manques = [];
+    if(!aCode(i, CODES_TITRE)) manques.push("Titre de propriété : aucune pièce OP ni OPA au dossier.");
+    if(!aCode(i, ["EHF"])) manques.push("État hypothécaire : aucune pièce EHF au dossier.");
+    ctrl.filter(r => r.statut !== "conforme").forEach(r =>
+      manques.push(`Référence cadastrale à reprendre : ${r.motif || "en défaut"}.`));
+    i.pieces.filter(pi => pi.source !== "charte").forEach(pi =>
+      manques.push(`Pièce à nommer selon la fiche OUT 2.1.1 : ${pi.nom}.`));
+    if(!manques.length) manques.push("Aucun manque relevé par l'inventaire. La liste reste à compléter par l'analyse.");
+
+    const enfants = [
+      p("Analyse des documents mis à disposition", { font:SERIF, size:34, color:NUIT, al:AlignmentType.LEFT, after:40 }),
+      p(`Immeuble ${i.numero || "—"} — ${com}`, { font:SERIF, size:24, color:GRIS, al:AlignmentType.LEFT, after:240 }),
+
+      t1("1. Désignation"),
+      t2("1.1 Désignation actuelle"),
+      table(wD, ["Parcelle", "Contenance cadastrale", "Origine immédiate"], lignesD),
+      p("Contenances issues du plan cadastral au millésime courant.", { it:true, color:GRIS, size:17, before:80 }),
+      t2("1.2 Désignation telle qu'elle résulte du titre de propriété"),
+      attente(),
+
+      t1("2. Origine de propriété"),
+      t2("2.1 Effet relatif"), attente(),
+      t2("2.2 Origine de propriété"), attente(),
+      t2("2.3 Origine de propriété antérieure"), attente(),
+
+      t1("3. Servitudes"), attente(),
+
+      t1("4. Points de vigilance"),
+      t2("4.1 Analyse des éléments transmis"), attente(),
+      t2("4.2 Éléments à demander pour compléter le dossier"),
+      ...manques.map(m => p(m, { after:100 })),
+
+      t1("5. Plans"),
+      t2("5.1 Plan cadastral"),
+    ];
+
+    const avecLien = ctrl.filter(r => r.lien);
+    if(avecLien.length) avecLien.forEach(r =>
+      enfants.push(lien(`Générer le plan colorisé de ${r.section} ${Number(r.numero)} — 1/${r.echelle} ${r.format}`, r.lien)));
+    else enfants.push(p("Plan non disponible : les références n'ont pas été contrôlées.", { color:CARMIN }));
+
+    enfants.push(t2("5.2 Vue aérienne"));
+    if(i.ortho) enfants.push(lien("Ouvrir la vue aérienne IGN, cadrée sur la même emprise", i.ortho));
+    else enfants.push(p("Vue non disponible : les références n'ont pas été contrôlées.", { color:CARMIN }));
+    enfants.push(p("Les deux images sont à coller ci-dessus après génération.", { it:true, color:GRIS, size:17 }));
+
+    return {
+      properties: { page: { margin: { top:1417, bottom:1417, left:1417, right:1417 } } },
+      headers: { default: new Header({ children:[ new Paragraph({
+        border:{ bottom:{ style:BorderStyle.SINGLE, size:8, color:NUIT, space:6 } },
+        spacing:{ after:240 },
+        children:[new TextRun({ text:`${DOSSIER_LIB} / ${i.numero || "—"}`, font:SANS, size:16, color:GRIS })] }) ]}) },
+      footers: { default: new Footer({ children:[ new Paragraph({
+        spacing:{ before:120 }, tabStops:[{ type:"right", position:L }],
+        children:[
+          new TextRun({ text:`${com} — immeuble ${i.numero || "—"}`, font:SANS, size:16, color:GRIS, italics:true }),
+          new TextRun({ children:["\tPage ", PageNumber.CURRENT, "/", PageNumber.TOTAL_PAGES],
+            font:SANS, size:18, color:GRIS })] }) ]}) },
+      children: enfants,
+    };
+  });
+}
+
+async function editerFiches(){
+  const D = window.docx;
+  if(!D){ E("etatFiches").textContent = "La bibliothèque Word n'a pas chargé. Recharge la page."; 
+          noter("window.docx absent du contexte.","fiches"); return; }
+  const liste = immeublesTries().filter(i => i.fiche);
+  if(!liste.length){ E("etatFiches").textContent = "Retiens au moins une fiche."; return; }
+  E("btnEditerFiches").disabled = true;
+  E("etatFiches").textContent = `Construction de ${liste.length} fiche(s)…`;
+  try {
+    const doc = new D.Document({
+      styles: { default: { document: { run: { font:"Segoe UI", size:20, color:"1A1A1A" } } } },
+      sections: sectionsFiches(D, liste),
+    });
+    const blob = await D.Packer.toBlob(doc);
+    telecharger(blob, `${horodatage()} TRENTE fiches.docx`);
+    E("etatFiches").textContent = `${liste.length} fiche(s) éditée(s).`;
+    noter(`${liste.length} fiches produites, triées par commune puis par numéro.`,"fiches");
+  } catch(e){
+    E("etatFiches").textContent = "Échec de la construction.";
+    noter("Word : "+e.message,"fiches");
+  }
+  E("btnEditerFiches").disabled = false;
+}
+E("btnEditerFiches").onclick = editerFiches;
 
 async function inventaireExcel(sel){
   const NUIT = "FF0F2238", CANARD = "FF33838B", ORANGE = "FFFF982D", CARMIN = "FFA01040", GRIS = "FF657D96";
