@@ -260,6 +260,7 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
           <input type="text" id="inseeTous" placeholder="code à 5 chiffres" style="max-width:140px" autocomplete="off">
         </div>
         <button class="sec" id="btnInsee">Appliquer</button>
+        <button class="sec" id="btnLireM1">Lire les M1</button>
         <button id="btnControler">Contrôler et préparer</button>
       </div>
       <div class="progression" id="progRef" hidden></div>
@@ -293,6 +294,7 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 /* =====================================================================
    TRENTE — couche inventaire
@@ -422,9 +424,33 @@ function pointInterieur(pts){
                   : [(Math.min(...xs) + Math.max(...xs)) / 2, (y0 + y1) / 2];
 }
 
+/* Le cadastre abrège les types de voie et écrit tout en capitales.
+   On rétablit un libellé de désignation : « 11 ALL DU TENNIS » devient
+   « 11 allée du Tennis ». */
+const VOIES = { ALL:"allée", AV:"avenue", BD:"boulevard", CAR:"carrefour", CHE:"chemin",
+  CHS:"chaussée", CITE:"cité", COR:"corniche", CRS:"cours", DOM:"domaine", DSC:"descente",
+  ECA:"écart", ESP:"esplanade", FG:"faubourg", GR:"grande rue", HAM:"hameau", HLE:"halle",
+  IMP:"impasse", LD:"lieudit", LOT:"lotissement", MAR:"marché", MTE:"montée", PAS:"passage",
+  PL:"place", PLN:"plaine", PLT:"plateau", PRO:"promenade", PRV:"parvis", QUA:"quartier",
+  QUAI:"quai", RES:"résidence", RLE:"ruelle", ROC:"rocade", RPT:"rond-point", RTE:"route",
+  RUE:"rue", SEN:"sentier", SQ:"square", TPL:"terre-plein", TRA:"traverse", VLA:"villa",
+  VLGE:"village", ZA:"zone d'activité", ZAC:"ZAC", ZI:"zone industrielle" };
+const PARTICULES = new Set(["DU","DE","DES","D","LA","LE","LES","L","AU","AUX","ET","SUR","SOUS","EN"]);
+function libelleVoie(s){
+  if(!s) return "";
+  return s.trim().split(/\s+/).map((mot, k) => {
+    const M = mot.toUpperCase().replace(/[^A-ZÀ-Ÿ0-9'-]/g, "");
+    if(/^\d+[A-Z]?$/.test(M)) return mot;
+    if(k <= 1 && VOIES[M]) return VOIES[M];
+    if(PARTICULES.has(M)) return M.toLowerCase();
+    return M.charAt(0) + M.slice(1).toLowerCase();
+  }).join(" ").replace(/\bl (\w)/gi, "l'$1").replace(/\bd (\w)/gi, "d'$1");
+}
+
+/* Format du cabinet : hectares, ares et centiares sur deux chiffres. */
 const haCa = (m2) => {
   const ha = Math.floor(m2 / 10000), a = Math.floor((m2 % 10000) / 100), ca = Math.round(m2 % 100);
-  return `${ha} ha ${String(a).padStart(2,"0")} a ${String(ca).padStart(2,"0")} ca`;
+  return `${String(ha).padStart(2,"0")} ha ${String(a).padStart(2,"0")} a ${String(ca).padStart(2,"0")} ca`;
 };
 
 /* Contrôle d'une référence au millésime courant. Une réponse vide vaut
@@ -486,6 +512,26 @@ function choisirCadre(largeur, hauteur, marge = 2.2){
       return { echelle: ech, format: fmt, tient: true };
   }
   return { echelle: 5000, format: "A3|paysage", tient: false };
+}
+
+/* Nom de commune et code postal, depuis geo.api.gouv.fr, sans clé.
+   Une commune peut porter plusieurs codes postaux — Villeneuve d'Ascq en a
+   trois. Dans ce cas on n'en imprime aucun plutôt que d'en choisir un au
+   hasard : un code postal faux dans une désignation est une erreur d'acte. */
+const _communes = {};
+async function infosCommune(insee){
+  if(_communes[insee] !== undefined) return _communes[insee];
+  try {
+    const r = await fetch(`https://geo.api.gouv.fr/communes/${insee}?fields=nom,codesPostaux`);
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    const cps = j.codesPostaux || [];
+    _communes[insee] = { nom: j.nom || null, cp: cps.length === 1 ? cps[0] : null, nbCp: cps.length };
+  } catch(e){
+    _communes[insee] = { nom: null, cp: null, nbCp: 0 };
+    noter(`Commune ${insee} : ${e.message}.`, "commune");
+  }
+  return _communes[insee];
 }
 
 /* Orthophotographie IGN — Géoplateforme, service WMS-Raster public, sans clé.
@@ -858,6 +904,91 @@ E("btnIncomplets").onclick = () => {
 };
 E("fMasquer").onchange = dessiner;
 
+/* =====================================================================
+   LECTURE DES EXTRAITS CADASTRAUX MODÈLE 1
+   Le M1 porte le code INSEE, les références, les adresses et les contenances
+   officielles. C'est un PDF numérique : son texte se lit sans OCR, donc sans
+   jeton. Il dispense de toute saisie à l'étape 5, et il a valeur probante —
+   « conforme à la documentation cadastrale » à sa date, validité six mois.
+   ===================================================================== */
+function analyserM1(txt){
+  const t = txt.replace(/\s+/g, " ");
+  let insee = null;
+  const mi = t.match(/D[ée]partement\s*:?\s*0*(\d{2,3})\s*Commune\s*:?\s*(\d{3})/i);
+  if(mi) insee = (mi[1].length === 3 ? mi[1].slice(1) : mi[1]) + mi[2];
+
+  const parcelles = [];
+  const re = /\b([A-Z]{1,2})\s*0*(\d{1,4})\s+(.{0,45}?)\s*(\d+)\s*ha\s*(\d+)\s*a\s*(\d+)\s*ca/g;
+  let m;
+  while((m = re.exec(t)) !== null){
+    const contenance = Number(m[4]) * 10000 + Number(m[5]) * 100 + Number(m[6]);
+    parcelles.push({
+      section: m[1].toUpperCase(),
+      numero: m[2].padStart(4, "0"),
+      adresse: m[3].replace(/\s{2,}/g, " ").trim(),
+      contenance,
+    });
+  }
+  const date = (t.match(/à la date du\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i)
+             || t.match(/(\d{2}\/\d{2}\/\d{4})/) || [])[1] || null;
+  return { insee, parcelles, date };
+}
+
+async function texteDuPDF(fileId){
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
+    { headers: { Authorization: "Bearer " + etat.token } });
+  if(!r.ok) throw new Error("téléchargement Drive " + r.status);
+  const buf = await r.arrayBuffer();
+  if(!window.pdfjsLib) throw new Error("pdf.js n'a pas chargé");
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const doc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+  let out = "";
+  for(let n = 1; n <= doc.numPages; n++){
+    const page = await doc.getPage(n);
+    const c = await page.getTextContent();
+    out += c.items.map(x => x.str).join(" ") + "\n";
+  }
+  return out;
+}
+
+E("btnLireM1").onclick = async () => {
+  const sel = retenus();
+  const avecM1 = sel.filter(i => i.pieces.some(p => p.type === "M1"));
+  if(!avecM1.length){
+    E("progRef").hidden = false;
+    E("progRef").textContent = "Aucune pièce M1 dans les immeubles retenus. "
+      + "Nommez l'extrait cadastral selon la fiche OUT 2.1.1, par exemple « 0042M1.pdf ».";
+    noter("Lecture des M1 : aucune pièce M1 trouvée.", "m1");
+    return;
+  }
+  E("btnLireM1").disabled = true;
+  let ok = 0, ko = 0, n = 0;
+  for(const i of avecM1){
+    const piece = i.pieces.find(p => p.type === "M1");
+    try {
+      const r = analyserM1(await texteDuPDF(piece.fileId));
+      if(!r.parcelles.length) throw new Error("aucune parcelle reconnue dans le texte");
+      i.m1 = r;
+      if(r.insee) i.insee = r.insee;
+      i.refs = r.parcelles.map(p => p.section + p.numero).join(" ");
+      ok++;
+      noter(`${i.numero} : M1 lu${r.date ? " du " + r.date : ""}, INSEE ${r.insee || "non lu"}, `
+        + r.parcelles.map(p => `${p.section} ${Number(p.numero)} ${haCa(p.contenance)}`).join(" · ")
+        + `, total ${haCa(r.parcelles.reduce((s,p) => s + p.contenance, 0))}.`, "m1");
+    } catch(e){
+      ko++;
+      noter(`${i.numero} : M1 non exploité — ${e.message}.`, "m1");
+    }
+    n++; E("progRef").hidden = false;
+    E("progRef").textContent = `Lecture des M1… ${n}/${avecM1.length}`;
+    dessinerRef();
+  }
+  E("progRef").textContent = `${ok} M1 lu(s)` + (ko ? `, ${ko} en échec` : "")
+    + ". Les parcelles et les codes INSEE sont renseignés.";
+  E("btnLireM1").disabled = false;
+};
+
 /* ---------- 5. références et plans ------------------------------------ */
 function refsInitiales(i){
   const vues = new Set();
@@ -892,7 +1023,8 @@ function dessinerRef(){
           style="max-width:78px;padding:5px 7px;font-size:13px" placeholder="5 chiffres"></td>
       <td><input type="text" data-k="${k}" data-ch="refs" value="${echapper(i.refs)}"
           style="padding:5px 7px;font-size:13px" placeholder="section et numéro, séparés par un espace"></td>
-      <td>${i.refs ? etatTxt : '<span class="anom">parcelles à saisir</span>'}</td>
+      <td>${i.refs ? etatTxt : '<span class="anom">parcelles à saisir</span>'}
+          ${i.m1 ? '<div class="puces">issu du M1' + (i.m1.date ? " du " + i.m1.date : "") + '</div>' : ''}</td>
       <td>${plan}</td>`;
     tb.appendChild(tr);
   });
@@ -950,6 +1082,9 @@ E("btnControler").onclick = async () => {
       const bw = ok.reduce((u, r) => [Math.min(u[0], r.bboxWGS[0]), Math.min(u[1], r.bboxWGS[1]),
                                       Math.max(u[2], r.bboxWGS[2]), Math.max(u[3], r.bboxWGS[3])], ok[0].bboxWGS);
       i.ortho = lienOrtho(bw);
+      const ic = await infosCommune(i.insee);
+      i.communeNom = ic.nom; i.cp = ic.cp;
+      if(ic.nbCp > 1) noter(`${i.numero} : ${ic.nbCp} codes postaux pour cette commune, aucun n'est imprimé.`, "commune");
       const tab = ok.map(r => `${r.section},${Number(r.numero)},${r.contenance || ""}`).join(";");
       const total = ok.length > 1 && ok.every(r => r.contenance)
         ? haCa(ok.reduce((s, r) => s + r.contenance, 0)) : "";
@@ -1228,21 +1363,65 @@ function sectionsFiches(D, liste){
     const wD = [1300, 1600, 6172];
 
     /* 1.1 — depuis l'API Carto, donc déterministe */
-    const lignesD = ctrl.length ? ctrl.map(r => new TableRow({ children:[
-      cell(r.statut === "conforme" ? `${r.section} ${Number(r.numero)}` : (r.motif || "référence en défaut"),
-           wD[0], { bold:true, color: r.statut === "conforme" ? "1A1A1A" : CARMIN }),
-      cell(r.contenance ? haCa(r.contenance) : "non fournie", wD[1],
-           { color: r.contenance ? "1A1A1A" : ORANGE }),
-      cell(r.statut === "conforme" ? A_COMPLETER : "Référence introuvable au millésime courant : la fiche ne peut être éditée en l'état.",
-           wD[2], { it: r.statut === "conforme", color: r.statut === "conforme" ? GRIS : CARMIN, size:18 }) ]}))
-      : [new TableRow({ children:[
-          cell("—", wD[0]), cell("—", wD[1]),
-          cell("Références non contrôlées. Le contrôle au millésime courant conditionne l'édition de la fiche.", wD[2], { color:CARMIN }) ]})];
+    /* Présentation du cabinet : une phrase situant l'ensemble immobilier,
+       puis le tableau Section · N° · Lieudit · Surface. */
+    const cherche = (sec, num) =>
+      ((i.m1 && i.m1.parcelles) || []).find(x => x.section === sec && x.numero === num);
+    const lieuditDe = (sec, num) => { const m = cherche(sec, num); return m ? libelleVoie(m.adresse) : ""; };
+    const surfaceDe = (r) => { const m = cherche(r.section, r.numero);
+      return (m && m.contenance) || r.contenance || null; };
 
-    /* 4.2 — déterministe : ce que l'inventaire sait manquer */
+    const conformes = ctrl.filter(r => r.statut === "conforme");
+    const lieudits = [...new Set(conformes.map(r => lieuditDe(r.section, r.numero)).filter(Boolean))];
+    const situation = [
+      (i.communeNom || com).toUpperCase(),
+      i.cp || "",
+      lieudits.join(", "),
+    ].filter(Boolean).join(" ");
+
+    const wC4 = [1100, 900, 4300, 2772];
+    let lignesD, colsD, tetesD;
+    if(ctrl.length){
+      colsD = wC4;
+      tetesD = ["Section", "N°", "Lieudit", "Surface"];
+      lignesD = ctrl.map(r => {
+        const c = r.statut === "conforme" ? surfaceDe(r) : null;
+        if(r.statut !== "conforme") return new TableRow({ children:[
+          cell("—", colsD[0], { color:CARMIN }), cell("—", colsD[1], { color:CARMIN }),
+          cell(r.motif || "référence en défaut", colsD[2], { color:CARMIN }),
+          cell("Référence introuvable au millésime courant", colsD[3], { color:CARMIN, size:17 }) ]});
+        return new TableRow({ children:[
+          cell(r.section, colsD[0], { bold:true }),
+          cell(String(Number(r.numero)), colsD[1], { bold:true }),
+          cell(lieuditDe(r.section, r.numero), colsD[2]),
+          cell(c ? haCa(c) : "non fournie", colsD[3], { color: c ? "1A1A1A" : ORANGE }) ]});
+      });
+      const tot = conformes.map(surfaceDe);
+      if(tot.length > 1 && tot.every(Boolean))
+        lignesD.push(new TableRow({ children:[
+          cell("", colsD[0]), cell("", colsD[1]),
+          cell("Total", colsD[2], { bold:true }),
+          cell(haCa(tot.reduce((a, b) => a + b, 0)), colsD[3], { bold:true }) ]}));
+    } else {
+      colsD = [1100, 900, 4300, 2772];
+      tetesD = ["Section", "N°", "Lieudit", "Surface"];
+      lignesD = [new TableRow({ children:[
+        cell("—", colsD[0]), cell("—", colsD[1]),
+        cell("Références non contrôlées. Le contrôle au millésime courant conditionne l'édition de la fiche.",
+             colsD[2], { color:CARMIN }), cell("—", colsD[3]) ]})];
+    }
+
+    const noteDesig = i.m1
+      ? "Surfaces et lieudits issus de l'extrait cadastral modèle 1"
+        + (i.m1.date ? " du " + i.m1.date : "")
+        + ", conforme à la documentation cadastrale à cette date."
+      : "Surfaces issues du plan cadastral au millésime courant.";
+
+    /* 4.2 — déterministe : ce que l'inventaire sait manquer. */
     const manques = [];
     if(!aCode(i, CODES_TITRE)) manques.push("Titre de propriété : aucune pièce OP ni OPA au dossier.");
     if(!aCode(i, ["EHF"])) manques.push("État hypothécaire : aucune pièce EHF au dossier.");
+    if(!i.pieces.some(pi => pi.type === "M1")) manques.push("Extrait cadastral modèle 1 : aucune pièce M1 au dossier.");
     ctrl.filter(r => r.statut !== "conforme").forEach(r =>
       manques.push(`Référence cadastrale à reprendre : ${r.motif || "en défaut"}.`));
     i.pieces.filter(pi => pi.source !== "charte").forEach(pi =>
@@ -1252,14 +1431,15 @@ function sectionsFiches(D, liste){
     /* Analyse importée pour cet immeuble, s'il y en a une. */
     const A = (etat.analyses && etat.analyses[i.numero]) || {};
     const aTitre = aCode(i, CODES_TITRE), aEtat = aCode(i, ["EHF"]);
+    const wT = [1300, 1600, 6172];
     const wE = [1400, 1900, 5772];
 
     const bloc12 = A.designationTitre && A.designationTitre.length
-      ? [table(wD, ["Parcelle au titre", "Contenance", "Mention portée au titre"],
+      ? [table(wT, ["Parcelle au titre", "Contenance", "Mention portée au titre"],
           A.designationTitre.map(r => new TableRow({ children:[
-            cell(r.parcelle || "—", wD[0], { bold:true }),
-            cell(r.contenance || "—", wD[1]),
-            cell(r.mention || "—", wD[2]) ]})))]
+            cell(r.parcelle || "—", wT[0], { bold:true }),
+            cell(r.contenance || "—", wT[1]),
+            cell(r.mention || "—", wT[2]) ]})))]
       : [attente(aTitre)];
 
     const bloc21 = A.effetRelatif && A.effetRelatif.length
@@ -1285,8 +1465,11 @@ function sectionsFiches(D, liste){
 
       t1("1. Désignation"),
       t2("1.1 Désignation actuelle"),
-      table(wD, ["Parcelle", "Contenance cadastrale", "Origine immédiate"], lignesD),
-      p("Contenances issues du plan cadastral au millésime courant.", { it:true, color:GRIS, size:17, before:80 }),
+      p(situation ? `Dans un ensemble immobilier situé à ${situation}.` : "Situation de l'ensemble immobilier à établir.",
+        { after:60, color: situation ? "1A1A1A" : CARMIN }),
+      p("Figurant ainsi au cadastre :", { after:100 }),
+      table(colsD, tetesD, lignesD),
+      p(noteDesig, { it:true, color:GRIS, size:17, before:80 }),
       t2("1.2 Désignation telle qu'elle résulte du titre de propriété"),
       ...bloc12,
 
