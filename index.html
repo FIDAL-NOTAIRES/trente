@@ -232,6 +232,10 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
         </div>
         <div id="communes" style="max-height:40vh;overflow:auto"></div>
         <div class="ligneControles" style="margin-top:14px">
+          <button class="sec" id="btnAnalyses">Importer les analyses (JSON)</button>
+          <input type="file" id="ficAnalyses" accept=".json,application/json" hidden>
+          <button class="sec" id="btnPlans">Déposer les plans (images)</button>
+          <input type="file" id="ficPlans" accept="image/*" multiple hidden>
           <button id="btnEditerFiches">Valider et produire le document</button>
           <span id="etatFiches" style="font-size:13.5px;color:var(--grisbleu)"></span>
         </div>
@@ -253,7 +257,7 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
       <div class="ligneControles" style="margin-bottom:14px">
         <div>
           <label class="champ" for="inseeTous">Code INSEE à appliquer aux lignes vides</label>
-          <input type="text" id="inseeTous" placeholder="59009" style="max-width:140px" autocomplete="off">
+          <input type="text" id="inseeTous" placeholder="code à 5 chiffres" style="max-width:140px" autocomplete="off">
         </div>
         <button class="sec" id="btnInsee">Appliquer</button>
         <button id="btnControler">Contrôler et préparer</button>
@@ -535,7 +539,7 @@ function lienPaint(insee, nomCommune, r, tab, total, cadre){
 
 /* ---------------------------------------------------------------------- */
 const E = id => document.getElementById(id);
-const etat = { token:null, racine:null, immeubles:[], modele:"inventaire", journal:[] };
+const etat = { token:null, racine:null, immeubles:[], modele:"inventaire", journal:[], analyses:{}, plans:{} };
 
 function noter(msg, voie){
   const t = new Date().toLocaleTimeString("fr-FR");
@@ -885,10 +889,10 @@ function dessinerRef(){
     tr.innerHTML = `
       <td class="num">${i.numero || "—"}</td>
       <td><input type="text" data-k="${k}" data-ch="insee" value="${echapper(i.insee)}"
-          style="max-width:78px;padding:5px 7px;font-size:13px" placeholder="59009"></td>
+          style="max-width:78px;padding:5px 7px;font-size:13px" placeholder="5 chiffres"></td>
       <td><input type="text" data-k="${k}" data-ch="refs" value="${echapper(i.refs)}"
-          style="padding:5px 7px;font-size:13px" placeholder="NL113 NL117 NL294"></td>
-      <td>${etatTxt}</td>
+          style="padding:5px 7px;font-size:13px" placeholder="section et numéro, séparés par un espace"></td>
+      <td>${i.refs ? etatTxt : '<span class="anom">parcelles à saisir</span>'}</td>
       <td>${plan}</td>`;
     tb.appendChild(tr);
   });
@@ -904,7 +908,19 @@ E("btnInsee").onclick = () => {
 };
 E("btnControler").onclick = async () => {
   const sel = retenus().filter(i => i.insee && i.refs);
-  if(!sel.length){ E("progRef").hidden = false; E("progRef").textContent = "Renseigne au moins un code INSEE et une liste de parcelles."; return; }
+  if(!sel.length){
+    const sansRef = retenus().filter(i => i.insee && !i.refs).map(i => i.numero || "?");
+    const sansInsee = retenus().filter(i => !i.insee).map(i => i.numero || "?");
+    const m = [];
+    if(sansInsee.length) m.push(`code INSEE absent : ${sansInsee.join(", ")}`);
+    if(sansRef.length) m.push(`références cadastrales absentes : ${sansRef.join(", ")}`);
+    E("progRef").hidden = false;
+    E("progRef").textContent = m.length
+      ? m.join(" · ") + ". Les références se préremplissent si les pièces sont nommées selon la fiche OUT 2.1.1, par exemple « 0042EHF NL113 NL117 NL294 »."
+      : "Aucun immeuble retenu à l'étape 3.";
+    noter("Contrôle non lancé — " + (m.join(" · ") || "aucun immeuble retenu"), "refs");
+    return;
+  }
   E("btnControler").disabled = true;
   let n = 0;
   for(const i of sel){
@@ -1085,6 +1101,85 @@ E("btnChoisir").onclick = () => {
 E("btnFichesTout").onclick = () => { etat.immeubles.forEach(i => i.fiche = true); dessinerCommunes(); };
 E("btnFichesRien").onclick = () => { etat.immeubles.forEach(i => i.fiche = false); dessinerCommunes(); };
 
+/* =====================================================================
+   PLANS — dépôt groupé, récupération de l'orthophotographie, réduction
+   Les exports de PAINT pèsent près de 2,6 Mo : deux images par fiche sur
+   cent immeubles donneraient un document inouvrable. Toute image est donc
+   ramenée à 1 100 px de large en JPEG avant insertion, ce qui reste très
+   au-delà de ce qu'une impression A4 exige.
+   ===================================================================== */
+const LARGEUR_IMG = 1100, QUALITE_IMG = 0.82;
+
+async function reduire(source){
+  const bmp = await createImageBitmap(source);
+  const k = Math.min(1, LARGEUR_IMG / bmp.width);
+  const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  cv.getContext("2d").drawImage(bmp, 0, 0, w, h);
+  const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", QUALITE_IMG));
+  bmp.close && bmp.close();
+  return { data: new Uint8Array(await blob.arrayBuffer()), w, h, poids: blob.size };
+}
+
+/* Dépôt groupé. Le rattachement se fait sur les quatre premiers chiffres du
+   nom ; « sat », « aer » ou « ign » dans le nom range l'image en vue aérienne. */
+E("btnPlans").onclick = () => E("ficPlans").click();
+E("ficPlans").onchange = async () => {
+  const fics = [...E("ficPlans").files];
+  if(!fics.length) return;
+  let ok = 0, ignores = [];
+  for(const f of fics){
+    const m = f.name.match(/(\d{4})/);
+    if(!m){ ignores.push(f.name); continue; }
+    const num = m[1];
+    if(!etat.immeubles.some(i => i.numero === num)){ ignores.push(f.name); continue; }
+    const aerienne = /sat|aer|ign|ortho/i.test(f.name);
+    try {
+      const r = await reduire(f);
+      etat.plans[num] = etat.plans[num] || {};
+      etat.plans[num][aerienne ? "aerienne" : "cadastral"] = r;
+      ok++;
+      noter(`${num} : ${aerienne ? "vue aérienne" : "plan cadastral"} déposé, `
+        + `${r.w}×${r.h} px, ${Math.round(r.poids/1024)} ko.`, "plans");
+    } catch(e){ ignores.push(f.name + " (" + e.message + ")"); }
+  }
+  E("etatFiches").textContent = `${ok} image(s) rattachée(s)`
+    + (ignores.length ? `, ${ignores.length} ignorée(s)` : "") + ".";
+  if(ignores.length) noter("Images ignorées : " + ignores.join(", ")
+    + ". Le nom doit porter le numéro d'immeuble sur quatre chiffres.", "plans");
+  E("ficPlans").value = "";
+};
+
+/* Orthophotographie IGN : point de service rendant une image, donc récupérable
+   sans intervention. Si le service refuse la requête croisée, on retombe sur
+   le lien — c'est le seul point que je n'ai pas pu éprouver hors navigateur. */
+async function rapporterOrthos(liste){
+  let ok = 0, echecs = 0;
+  for(const i of liste){
+    if(!i.ortho) continue;
+    if(etat.plans[i.numero] && etat.plans[i.numero].aerienne) continue;
+    try {
+      const rep = await fetch(i.ortho);
+      if(!rep.ok) throw new Error("HTTP " + rep.status);
+      const b = await rep.blob();
+      if(!/image/.test(b.type)) throw new Error("réponse non image : " + b.type);
+      const r = await reduire(b);
+      etat.plans[i.numero] = etat.plans[i.numero] || {};
+      etat.plans[i.numero].aerienne = r;
+      ok++;
+      noter(`${i.numero} : vue aérienne rapportée de l'IGN, ${r.w}×${r.h} px, `
+        + `${Math.round(r.poids/1024)} ko.`, "ortho");
+    } catch(e){
+      echecs++;
+      noter(`${i.numero} : vue aérienne non rapportée — ${e.message}. `
+        + `Le lien reste dans la fiche.`, "ortho");
+    }
+  }
+  if(ok || echecs) E("etatFiches").textContent =
+    `Vues aériennes : ${ok} rapportée(s), ${echecs} en échec.`;
+}
+
 /* ---------- construction du document ---------- */
 function sectionsFiches(D, liste){
   const { Paragraph, TextRun, Table, TableRow, TableCell, TableLayoutType, WidthType,
@@ -1102,7 +1197,12 @@ function sectionsFiches(D, liste){
       underline: o.u ? { type: UnderlineType.SINGLE } : undefined })] });
   const t1 = (s) => p(s, { al: AlignmentType.LEFT, bold:true, u:true, size:24, color:NUIT, before:320, after:160 });
   const t2 = (s) => p(s, { al: AlignmentType.LEFT, bold:true, size:21, color:NUIT, before:200, after:120 });
-  const attente = () => p(A_COMPLETER, { it:true, color:GRIS, size:18 });
+  /* Si la pièce source est absente, la section reste vide : le manque est
+     déjà énoncé une fois en 4.2, le répéter serait du bruit. */
+  const attente = (source) => source
+    ? p(A_COMPLETER, { it:true, color:GRIS, size:18 })
+    : p("", { after:60 });
+  const paras = (v) => (Array.isArray(v) ? v : [v]).filter(Boolean).map(x => p(String(x), { after:120 }));
   const lien = (txt, url) => new Paragraph({ spacing:{ after:120, line:240 }, children:[
     new ExternalHyperlink({ link:url, children:[
       new TextRun({ text:txt, font:SANS, size:19, color:CANARD, underline:{ type:UnderlineType.SINGLE } })] })] });
@@ -1149,6 +1249,36 @@ function sectionsFiches(D, liste){
       manques.push(`Pièce à nommer selon la fiche OUT 2.1.1 : ${pi.nom}.`));
     if(!manques.length) manques.push("Aucun manque relevé par l'inventaire. La liste reste à compléter par l'analyse.");
 
+    /* Analyse importée pour cet immeuble, s'il y en a une. */
+    const A = (etat.analyses && etat.analyses[i.numero]) || {};
+    const aTitre = aCode(i, CODES_TITRE), aEtat = aCode(i, ["EHF"]);
+    const wE = [1400, 1900, 5772];
+
+    const bloc12 = A.designationTitre && A.designationTitre.length
+      ? [table(wD, ["Parcelle au titre", "Contenance", "Mention portée au titre"],
+          A.designationTitre.map(r => new TableRow({ children:[
+            cell(r.parcelle || "—", wD[0], { bold:true }),
+            cell(r.contenance || "—", wD[1]),
+            cell(r.mention || "—", wD[2]) ]})))]
+      : [attente(aTitre)];
+
+    const bloc21 = A.effetRelatif && A.effetRelatif.length
+      ? [table(wE, ["Parcelle", "Formalité", "Nature"],
+          A.effetRelatif.map(r => new TableRow({ children:[
+            cell(r.parcelle || "—", wE[0], { bold:true }),
+            cell(r.formalite || "—", wE[1]),
+            cell(r.nature || "—", wE[2]) ]})))]
+      : [attente(aEtat)];
+
+    const bloc41 = A.vigilance && A.vigilance.length
+      ? [table([300, 2250, 4300, 2222], ["", "Vérification", "Conclusion", "Sources"],
+          A.vigilance.map(r => new TableRow({ children:[
+            cell("", 300, { fill: r.etat === "canard" ? CANARD : r.etat === "carmin" ? CARMIN : ORANGE }),
+            cell(r.verification || "—", 2250, { bold:true }),
+            cell(r.conclusion || "—", 4300),
+            cell(r.sources || "", 2222, { color:GRIS, size:16 }) ]})))]
+      : [attente(aTitre || aEtat)];
+
     const enfants = [
       p("Analyse des documents mis à disposition", { font:SERIF, size:34, color:NUIT, al:AlignmentType.LEFT, after:40 }),
       p(`Immeuble ${i.numero || "—"} — ${com}`, { font:SERIF, size:24, color:GRIS, al:AlignmentType.LEFT, after:240 }),
@@ -1158,33 +1288,61 @@ function sectionsFiches(D, liste){
       table(wD, ["Parcelle", "Contenance cadastrale", "Origine immédiate"], lignesD),
       p("Contenances issues du plan cadastral au millésime courant.", { it:true, color:GRIS, size:17, before:80 }),
       t2("1.2 Désignation telle qu'elle résulte du titre de propriété"),
-      attente(),
+      ...bloc12,
 
       t1("2. Origine de propriété"),
-      t2("2.1 Effet relatif"), attente(),
-      t2("2.2 Origine de propriété"), attente(),
-      t2("2.3 Origine de propriété antérieure"), attente(),
+      t2("2.1 Effet relatif"), ...bloc21,
+      t2("2.2 Origine de propriété"),
+      ...(A.origine ? paras(A.origine) : [attente(aTitre)]),
+      t2("2.3 Origine de propriété antérieure"),
+      ...(A.alerteTrentenaire ? [new Paragraph({
+            spacing:{ after:160, line:240 },
+            border:{ left:{ style:BorderStyle.SINGLE, size:18, color:CARMIN, space:8 } },
+            children:[new TextRun({ text:A.alerteTrentenaire, font:SANS, size:19, color:CARMIN, bold:true })] })] : []),
+      ...(A.origineAnterieure ? paras(A.origineAnterieure) : [attente(aTitre)]),
 
-      t1("3. Servitudes"), attente(),
+      t1("3. Servitudes"),
+      ...(A.servitudes ? paras(A.servitudes) : [attente(aTitre)]),
 
       t1("4. Points de vigilance"),
-      t2("4.1 Analyse des éléments transmis"), attente(),
+      t2("4.1 Analyse des éléments transmis"), ...bloc41,
       t2("4.2 Éléments à demander pour compléter le dossier"),
       ...manques.map(m => p(m, { after:100 })),
+      ...paras(A.aDemander || []),
 
       t1("5. Plans"),
       t2("5.1 Plan cadastral"),
     ];
 
-    const avecLien = ctrl.filter(r => r.lien);
-    if(avecLien.length) avecLien.forEach(r =>
-      enfants.push(lien(`Générer le plan colorisé de ${r.section} ${Number(r.numero)} — 1/${r.echelle} ${r.format}`, r.lien)));
-    else enfants.push(p("Plan non disponible : les références n'ont pas été contrôlées.", { color:CARMIN }));
+    const img = etat.plans[i.numero] || {};
+    const inserer = (r, hMax) => {
+      const k = Math.min(605 / r.w, hMax / r.h);
+      return new Paragraph({ alignment:AlignmentType.CENTER, spacing:{ after:120 }, children:[
+        new D.ImageRun({ type:"jpg", data:r.data,
+          transformation:{ width:Math.round(r.w*k), height:Math.round(r.h*k) } })] });
+    };
+
+    if(img.cadastral){
+      enfants.push(inserer(img.cadastral, 700));
+      enfants.push(p("Extrait du plan cadastral délivré par la DGFiP, colorisé en carmin sur les parcelles objet de la présente analyse.",
+        { it:true, color:GRIS, size:17, al:AlignmentType.CENTER }));
+    } else {
+      const avecLien = ctrl.filter(r => r.lien);
+      if(avecLien.length) avecLien.forEach(r =>
+        enfants.push(lien(`Générer le plan colorisé de ${r.section} ${Number(r.numero)} — 1/${r.echelle} ${r.format}`, r.lien)));
+      else enfants.push(p("Plan non disponible : les références n'ont pas été contrôlées.", { color:CARMIN }));
+    }
 
     enfants.push(t2("5.2 Vue aérienne"));
-    if(i.ortho) enfants.push(lien("Ouvrir la vue aérienne IGN, cadrée sur la même emprise", i.ortho));
-    else enfants.push(p("Vue non disponible : les références n'ont pas été contrôlées.", { color:CARMIN }));
-    enfants.push(p("Les deux images sont à coller ci-dessus après génération.", { it:true, color:GRIS, size:17 }));
+    if(img.aerienne){
+      enfants.push(inserer(img.aerienne, 700));
+      enfants.push(p("Vue aérienne IGN, cadrée sur la même emprise que le plan cadastral. Le millésime de la prise de vue est celui du service.",
+        { it:true, color:GRIS, size:17, al:AlignmentType.CENTER }));
+    } else if(i.ortho){
+      enfants.push(lien("Ouvrir la vue aérienne IGN, cadrée sur la même emprise", i.ortho));
+    } else {
+      enfants.push(p("Vue non disponible : les références n'ont pas été contrôlées.", { color:CARMIN }));
+    }
 
     return {
       properties: { page: { margin: { top:1417, bottom:1417, left:1417, right:1417 } } },
@@ -1210,6 +1368,8 @@ async function editerFiches(){
   const liste = immeublesTries().filter(i => i.fiche);
   if(!liste.length){ E("etatFiches").textContent = "Retiens au moins une fiche."; return; }
   E("btnEditerFiches").disabled = true;
+  E("etatFiches").textContent = "Récupération des vues aériennes…";
+  await rapporterOrthos(liste);
   E("etatFiches").textContent = `Construction de ${liste.length} fiche(s)…`;
   try {
     const doc = new D.Document({
@@ -1227,6 +1387,40 @@ async function editerFiches(){
   E("btnEditerFiches").disabled = false;
 }
 E("btnEditerFiches").onclick = editerFiches;
+
+/* ---------- import des analyses ----------
+   Contrat de données, indexé par numéro d'immeuble. Le même objet, qu'il soit
+   produit à la main ou par un appel de modèle depuis l'application :
+   { "0042": {
+       designationTitre:[{parcelle,contenance,mention}],
+       effetRelatif:[{parcelle,formalite,nature}],
+       origine:"…" | ["…"],
+       alerteTrentenaire:"…" | null,
+       origineAnterieure:"…" | ["…"],
+       servitudes:["…"],
+       vigilance:[{etat:"canard|orange|carmin",verification,conclusion,sources}],
+       aDemander:["…"] } }                                                     */
+E("btnAnalyses").onclick = () => E("ficAnalyses").click();
+E("ficAnalyses").onchange = async () => {
+  const f = E("ficAnalyses").files[0];
+  if(!f) return;
+  try {
+    const o = JSON.parse(await f.text());
+    if(typeof o !== "object" || Array.isArray(o)) throw new Error("le fichier doit être un objet indexé par numéro d'immeuble");
+    etat.analyses = o;
+    const cles = Object.keys(o);
+    const connus = cles.filter(k => etat.immeubles.some(i => i.numero === k));
+    const inconnus = cles.filter(k => !connus.includes(k));
+    E("etatFiches").textContent = `${connus.length} analyse(s) rattachée(s)`
+      + (inconnus.length ? `, ${inconnus.length} numéro(s) sans immeuble` : "") + ".";
+    noter(`Analyses importées : ${connus.length} rattachée(s) sur ${cles.length}.`
+      + (inconnus.length ? ` Numéros sans immeuble : ${inconnus.join(", ")}.` : ""), "analyses");
+  } catch(e){
+    E("etatFiches").textContent = "Fichier illisible.";
+    noter("Import des analyses : "+e.message, "analyses");
+  }
+  E("ficAnalyses").value = "";
+};
 
 async function inventaireExcel(sel){
   const NUIT = "FF0F2238", CANARD = "FF33838B", ORANGE = "FFFF982D", CARMIN = "FFA01040", GRIS = "FF657D96";
