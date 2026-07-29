@@ -913,9 +913,27 @@ E("fMasquer").onchange = dessiner;
    ===================================================================== */
 function analyserM1(txt){
   const t = txt.replace(/\s+/g, " ");
-  let insee = null;
-  const mi = t.match(/D[ée]partement\s*:?\s*0*(\d{2,3})\s*Commune\s*:?\s*(\d{3})/i);
-  if(mi) insee = (mi[1].length === 3 ? mi[1].slice(1) : mi[1]) + mi[2];
+  const dept2 = (d) => (d.length === 3 ? d.slice(1) : d);
+  let insee = null, voieInsee = null;
+
+  /* pdf.js restitue les fragments d'un formulaire dans l'ordre du FICHIER, pas
+     dans l'ordre visuel : les étiquettes et leurs valeurs arrivent souvent
+     séparées. On essaie donc du plus strict au plus tolérant, et on dit par
+     quelle voie on a trouvé. */
+  const voies = [
+    ["étiquettes contiguës", /D[ée]partement\s*:?\s*0*(\d{2,3})\D{0,10}Commune\s*:?\s*(\d{3})\b/i],
+    ["étiquettes espacées", /D[ée]partement[^0-9]{0,120}?(\d{2,3})[^0-9]{0,120}?Commune[^0-9]{0,120}?(\d{3})\b/i],
+    ["ordre inverse", /Commune[^0-9]{0,120}?(\d{3})[^0-9]{0,120}?D[ée]partement[^0-9]{0,120}?(\d{2,3})\b/i],
+    ["valeurs accolées", /\b(0\d{2})\s+(\d{3})\b/],
+  ];
+  for(const [nom, re] of voies){
+    const m = t.match(re);
+    if(!m) continue;
+    const a = nom === "ordre inverse" ? m[2] : m[1];
+    const b = nom === "ordre inverse" ? m[1] : m[2];
+    const cand = dept2(a) + b;
+    if(/^\d{5}$/.test(cand)){ insee = cand; voieInsee = nom; break; }
+  }
 
   const parcelles = [];
   const re = /\b([A-Z]{1,2})\s*0*(\d{1,4})\s+(.{0,45}?)\s*(\d+)\s*ha\s*(\d+)\s*a\s*(\d+)\s*ca/g;
@@ -931,7 +949,7 @@ function analyserM1(txt){
   }
   const date = (t.match(/à la date du\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i)
              || t.match(/(\d{2}\/\d{2}\/\d{4})/) || [])[1] || null;
-  return { insee, parcelles, date };
+  return { insee, voieInsee, parcelles, date, brut: t.slice(0, 300) };
 }
 
 async function texteDuPDF(fileId){
@@ -973,7 +991,10 @@ E("btnLireM1").onclick = async () => {
       if(r.insee) i.insee = r.insee;
       i.refs = r.parcelles.map(p => p.section + p.numero).join(" ");
       ok++;
-      noter(`${i.numero} : M1 lu${r.date ? " du " + r.date : ""}, INSEE ${r.insee || "non lu"}, `
+      if(!r.insee) noter(`${i.numero} : INSEE non extrait du M1. Début du texte lu — `
+        + r.brut, "m1");
+      noter(`${i.numero} : M1 lu${r.date ? " du " + r.date : ""}, `
+        + `INSEE ${r.insee ? r.insee + " (" + r.voieInsee + ")" : "NON LU, à saisir"}, `
         + r.parcelles.map(p => `${p.section} ${Number(p.numero)} ${haCa(p.contenance)}`).join(" · ")
         + `, total ${haCa(r.parcelles.reduce((s,p) => s + p.contenance, 0))}.`, "m1");
     } catch(e){
@@ -984,8 +1005,11 @@ E("btnLireM1").onclick = async () => {
     E("progRef").textContent = `Lecture des M1… ${n}/${avecM1.length}`;
     dessinerRef();
   }
+  const sansInsee = avecM1.filter(x => x.m1 && !x.m1.insee).map(x => x.numero);
   E("progRef").textContent = `${ok} M1 lu(s)` + (ko ? `, ${ko} en échec` : "")
-    + ". Les parcelles et les codes INSEE sont renseignés.";
+    + (sansInsee.length
+        ? `. Code INSEE non extrait pour ${sansInsee.join(", ")} : saisis-le dans le champ du haut puis Appliquer.`
+        : ". Parcelles et codes INSEE renseignés.");
   E("btnLireM1").disabled = false;
 };
 
