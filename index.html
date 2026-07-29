@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRENTE — Inventaire des titres de propriété</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230F2238'/><text x='16' y='23' font-family='Georgia' font-size='18' fill='%23FFC900' text-anchor='middle'>30</text></svg>">
+<style>
+:root{
+  --nuit:#0F2238; --encre:#1A1A1A; --blanc:#FFFFFF;
+  --canard:#33838B; --orange:#FF982D; --cyan:#6DD5DC;
+  --grisbleu:#657D96; --jauneforme:#FFE764; --jaunetypo:#FFC900;
+  --carmin:#A01040;
+  --papier:#FBFBF9; --filet:#E1E5EA; --filet2:#F0F2F5;
+  --pas:8px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--papier); color:var(--encre);
+  font-family:"Segoe UI",Frutiger,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:Georgia,"Times New Roman",serif; font-weight:normal; color:var(--nuit); margin:0}
+a{color:var(--canard)}
+:focus-visible{outline:2px solid var(--canard); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- en-tête : blanc, filet bas bleu nuit (pas de bandeau plein) ---------- */
+.tete{background:var(--blanc); border-bottom:2px solid var(--nuit)}
+.tete .in{max-width:1180px; margin:0 auto; padding:20px 24px 16px; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap}
+.marque{font-family:Georgia,serif; font-size:30px; letter-spacing:.14em; color:var(--nuit)}
+.marque em{font-style:normal; color:var(--jaunetypo)}
+.sstitre{font-size:13px; color:var(--grisbleu); letter-spacing:.02em}
+.tete .droite{margin-left:auto; font-size:12px; color:var(--grisbleu)}
+
+.corps{max-width:1180px; margin:0 auto; padding:24px}
+
+/* ---------- étapes ---------- */
+.etape{background:var(--blanc); border:1px solid var(--filet); margin-bottom:18px}
+.etape>.enTete{display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid var(--filet2)}
+.rang{font-family:Georgia,serif; font-size:13px; color:var(--blanc); background:var(--nuit);
+  width:24px; height:24px; display:grid; place-items:center; flex:0 0 auto}
+.etape h2{font-size:17px}
+.etape .aide{font-size:12.5px; color:var(--grisbleu); margin-left:auto; text-align:right}
+.etape>.contenu{padding:18px}
+.etape[data-inactif="1"]{opacity:.5; pointer-events:none}
+
+/* ---------- contrôles ---------- */
+button{font-family:inherit; font-size:14px; cursor:pointer; border:1px solid var(--nuit);
+  background:var(--nuit); color:var(--blanc); padding:9px 16px; letter-spacing:.02em}
+button:hover:not(:disabled){background:#1B3651}
+button.sec{background:var(--blanc); color:var(--nuit)}
+button.sec:hover:not(:disabled){background:var(--filet2)}
+button:disabled{cursor:not-allowed; opacity:.45}
+input[type=text]{font-family:inherit; font-size:14px; padding:9px 11px; border:1px solid var(--filet);
+  background:var(--blanc); color:var(--encre); width:100%; max-width:520px}
+input[type=text]:focus{border-color:var(--canard)}
+label.champ{display:block; font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+  color:var(--grisbleu); margin-bottom:5px}
+.ligneControles{display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap}
+
+/* ---------- alertes ---------- */
+.avis{border-left:3px solid var(--orange); background:#FFF9F0; padding:12px 14px; font-size:13.5px; margin-bottom:16px}
+.avis.dur{border-left-color:var(--carmin); background:#FDF2F5}
+.avis strong{color:var(--nuit)}
+.avis code{background:var(--blanc); border:1px solid var(--filet); padding:1px 5px; font-size:12.5px}
+
+/* ---------- synthèse ---------- */
+.synthese{display:flex; gap:0; flex-wrap:wrap; border:1px solid var(--filet); margin-bottom:16px}
+.synthese .case{flex:1 1 120px; padding:12px 16px; border-right:1px solid var(--filet2)}
+.synthese .case:last-child{border-right:0}
+.synthese .n{font-family:Georgia,serif; font-size:26px; color:var(--nuit); font-variant-numeric:tabular-nums}
+.synthese .l{font-size:11.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--grisbleu)}
+.synthese .case.rge .n{color:var(--carmin)}
+.synthese .case.amb .n{color:var(--orange)}
+.synthese .case.cnd .n{color:var(--canard)}
+
+/* ---------- tableau ---------- */
+.cadreTable{border:1px solid var(--filet); max-height:62vh; overflow:auto; background:var(--blanc)}
+table{border-collapse:collapse; width:100%; font-size:13.5px}
+thead th{position:sticky; top:0; background:var(--nuit); color:var(--blanc); font-weight:600;
+  text-align:left; padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; z-index:2}
+tbody td{padding:8px 10px; border-bottom:1px solid var(--filet2); vertical-align:top}
+tbody tr:hover{background:#F7F9FA}
+tbody tr[data-sel="0"]{background:#FCFCFC; color:var(--grisbleu)}
+td.num{font-family:Georgia,serif; font-variant-numeric:tabular-nums; color:var(--nuit); white-space:nowrap}
+td.ctr{text-align:center}
+.past{display:inline-block; width:9px; height:9px; vertical-align:middle}
+.past.ok{background:var(--canard)}
+.past.dev{background:var(--orange)}
+.past.non{background:var(--carmin)}
+.puces{font-size:12px; color:var(--grisbleu)}
+.puce{display:inline-block; border:1px solid var(--filet); padding:1px 6px; margin:1px 3px 1px 0; white-space:nowrap}
+.puce.dev{border-color:var(--orange); color:#8A4A00; background:#FFF9F0}
+.anom{font-size:12px; color:var(--carmin)}
+.filtres{display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:12px; font-size:13px}
+.filtres label{display:flex; gap:5px; align-items:center; cursor:pointer}
+
+/* ---------- modèles ---------- */
+.modeles{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; margin-bottom:16px}
+.modele{border:1px solid var(--filet); padding:14px; cursor:pointer; background:var(--blanc); display:block}
+.modele:hover{border-color:var(--canard)}
+.modele[aria-disabled="true"]{cursor:not-allowed; background:#FCFCFC}
+.modele input{margin-right:8px}
+.modele .t{font-family:Georgia,serif; font-size:15px; color:var(--nuit)}
+.modele .d{font-size:12.5px; color:var(--grisbleu); margin-top:5px; padding-left:22px}
+.modele .etat{display:inline-block; font-size:10.5px; text-transform:uppercase; letter-spacing:.07em;
+  padding:1px 6px; margin-left:6px; background:var(--jauneforme); color:var(--nuit)}
+.modele .etat.futur{background:var(--filet2); color:var(--grisbleu)}
+
+/* ---------- journal ---------- */
+details.journal{border:1px solid var(--filet); background:var(--blanc)}
+details.journal summary{padding:11px 18px; cursor:pointer; font-size:13px; color:var(--nuit)}
+.journal pre{margin:0; padding:0 18px 16px; font-family:Consolas,Menlo,monospace; font-size:11.5px;
+  line-height:1.65; color:var(--encre); white-space:pre-wrap; max-height:300px; overflow:auto}
+.journal .vide{color:var(--grisbleu)}
+
+footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px; color:var(--grisbleu)}
+.progression{font-size:13px; color:var(--canard); margin-top:10px; font-variant-numeric:tabular-nums}
+@media(max-width:640px){
+  .corps{padding:14px} .tete .in{padding:16px 14px 12px} .marque{font-size:24px}
+  .etape>.contenu{padding:14px} .etape .aide{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="tete">
+  <div class="in">
+    <div class="marque">TRE<em>N</em>TE</div>
+    <div class="sstitre">Inventaire des titres de propriété — origine trentenaire</div>
+    <div class="droite">FIDAL Notaires Paris</div>
+  </div>
+</header>
+
+<main class="corps">
+
+  <div id="avisConfig" class="avis dur" hidden>
+    <strong>Identifiant client OAuth non renseigné.</strong>
+    Ouvre <code>index.html</code> et remplace la valeur de <code>CLIENT_ID</code> par l'identifiant
+    créé dans Google Cloud Console (type « Application Web », scope
+    <code>drive.readonly</code>, origine autorisée : l'URL de cette page).
+    Tant que cette valeur est absente, la connexion ne peut pas aboutir.
+  </div>
+
+  <!-- 1 ------------------------------------------------------------------ -->
+  <section class="etape" id="e1">
+    <div class="enTete"><span class="rang">1</span><h2>Accès au Drive</h2>
+      <div class="aide">Lecture seule. TRENTE n'écrit jamais dans le Drive.</div></div>
+    <div class="contenu">
+      <div class="ligneControles">
+        <button id="btnConnexion">Se connecter à Google Drive</button>
+        <span id="etatConnexion" style="font-size:13.5px;color:var(--grisbleu)">Non connecté.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 ------------------------------------------------------------------ -->
+  <section class="etape" id="e2" data-inactif="1">
+    <div class="enTete"><span class="rang">2</span><h2>Dossier racine du portefeuille</h2>
+      <div class="aide">Un sous-dossier par immeuble</div></div>
+    <div class="contenu">
+      <div class="ligneControles">
+        <div style="flex:1 1 420px">
+          <label class="champ" for="racine">Identifiant ou URL du dossier</label>
+          <input type="text" id="racine" placeholder="1FZHQzeP46XALhr-An9sKJq4yjVhiiPRW ou https://drive.google.com/drive/folders/…" autocomplete="off">
+        </div>
+        <button id="btnScan">Lire les sous-dossiers</button>
+      </div>
+      <div class="progression" id="progression" hidden></div>
+    </div>
+  </section>
+
+  <!-- 3 ------------------------------------------------------------------ -->
+  <section class="etape" id="e3" data-inactif="1">
+    <div class="enTete"><span class="rang">3</span><h2>Immeubles retenus</h2>
+      <div class="aide">Tout est sélectionné par défaut</div></div>
+    <div class="contenu">
+      <div class="synthese" id="synthese"></div>
+      <div class="filtres">
+        <button class="sec" id="btnTout">Tout sélectionner</button>
+        <button class="sec" id="btnRien">Tout désélectionner</button>
+        <button class="sec" id="btnIncomplets">Ne garder que les incomplets</button>
+        <label><input type="checkbox" id="fMasquer"> Masquer les immeubles conformes</label>
+      </div>
+      <div class="cadreTable">
+        <table>
+          <thead><tr>
+            <th style="width:34px"><span title="Sélection">✓</span></th>
+            <th style="width:70px">N°</th>
+            <th>Libellé du sous-dossier</th>
+            <th class="ctr" style="width:52px" title="Titre de propriété">Titre</th>
+            <th class="ctr" style="width:74px" title="État hypothécaire">État hyp.</th>
+            <th style="width:34%">Pièces typées</th>
+            <th style="width:22%">Anomalies</th>
+          </tr></thead>
+          <tbody id="corpsTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 ------------------------------------------------------------------ -->
+  <section class="etape" id="e4" data-inactif="1">
+    <div class="enTete"><span class="rang">4</span><h2>Modèle de rendu</h2>
+      <div class="aide">Le manifeste est le point de passage vers l'analyse</div></div>
+    <div class="contenu">
+      <div class="modeles" id="modeles"></div>
+      <div class="ligneControles">
+        <button id="btnRendre">Produire le rendu</button>
+        <button class="sec" id="btnManifeste">Exporter le manifeste (JSON)</button>
+        <span id="etatRendu" style="font-size:13.5px;color:var(--grisbleu)"></span>
+      </div>
+    </div>
+  </section>
+
+  <details class="journal" id="journal">
+    <summary>Journal de diagnostic</summary>
+    <pre id="journalTexte" class="vide">Rien à signaler pour l'instant.</pre>
+  </details>
+
+</main>
+
+<footer>
+  TRENTE v1.0 — couche inventaire. L'analyse juridique des titres (chaîne trentenaire,
+  vigilances, clause d'origine de propriété) reste hors de cette couche : elle s'appuie sur le manifeste.
+</footer>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+/* =====================================================================
+   TRENTE — couche inventaire
+   À RENSEIGNER : identifiant client OAuth Google (Cloud Console)
+   ===================================================================== */
+const CLIENT_ID = "82507767087-kr2q7r67r2m4llj6ftldgr4rc2n24gbu.apps.googleusercontent.com";
+const SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+const MIME_DOSSIER = "application/vnd.google-apps.folder";
+const CONCURRENCE = 6;
+
+/* Codes de type déclarés (convention de dépôt) --------------------------- */
+const TYPES = {
+  TITRE:"Titre de propriété", ETATHYP:"État hypothécaire", ATTEST:"Attestation immobilière",
+  NOTOR:"Acte de notoriété", DON:"Donation", PART:"Partage",
+  EDD:"État descriptif de division", COMP:"Compromis / promesse", DDT:"Diagnostics",
+  PLAN:"Plan / cadastre", QUIT:"Quittance", AUTRE:"Autre pièce"
+};
+/* Repli par contenu du nom, si le code est absent ou inconnu -------------- */
+const REPLI = [
+  [/titre|acte de vente|\bvente\b|acquisition|adjudication/i,"TITRE"],
+  [/hypoth|etat hyp|état hyp|renseignement|fichier immobilier/i,"ETATHYP"],
+  [/notori|notoriete|notoriété|devolution|dévolution/i,"NOTOR"],
+  [/attest/i,"ATTEST"],
+  [/donation|donation-partage|libéralit|liberalit/i,"DON"],
+  [/partage|licitation/i,"PART"],
+  [/descriptif|\bedd\b|reglement de copro|règlement de copro/i,"EDD"],
+  [/compromis|promesse|avant-contrat/i,"COMP"],
+  [/diagnostic|\bddt\b|carrez|amiante|dpe/i,"DDT"],
+  [/plan|cadastr|extrait/i,"PLAN"],
+  [/quittance|mainlev/i,"QUIT"]
+];
+
+const MODELES = [
+  {id:"inventaire", t:"Inventaire du portefeuille", d:"Un onglet par immeuble et un onglet par pièce, à la charte. Ce que tu peux produire aujourd'hui.", pret:true},
+  {id:"fiche",   t:"Fiche par immeuble",  d:"Chaîne trentenaire, vigilances, clause. Un document Word par immeuble retenu.", pret:false},
+  {id:"risques", t:"Note de risques consolidée", d:"Les seuls feux rouges du portefeuille, triés par gravité.", pret:false},
+  {id:"clauses", t:"Clauses d'origine de propriété", d:"Les clauses seules, prêtes à intégrer aux actes.", pret:false}
+];
+
+/* ---------------------------------------------------------------------- */
+const E = id => document.getElementById(id);
+const etat = { token:null, racine:null, immeubles:[], modele:"inventaire", journal:[] };
+
+function noter(msg, voie){
+  const t = new Date().toLocaleTimeString("fr-FR");
+  etat.journal.push(`${t}  ${voie ? "["+voie+"] " : ""}${msg}`);
+  const p = E("journalTexte");
+  p.classList.remove("vide");
+  p.textContent = etat.journal.join("\n");
+  p.scrollTop = p.scrollHeight;
+}
+function activer(id, oui){ E(id).dataset.inactif = oui ? "0" : "1"; }
+function progresser(txt){ const d = E("progression"); d.hidden = !txt; d.textContent = txt || ""; }
+
+/* ---------- 1. connexion ---------------------------------------------- */
+let clientJeton = null;
+function preparerAuth(){
+  if(!CLIENT_ID){ E("avisConfig").hidden = false; E("btnConnexion").disabled = true;
+    noter("CLIENT_ID absent : la connexion est impossible.","config"); return; }
+  if(typeof google === "undefined" || !google.accounts){ setTimeout(preparerAuth, 250); return; }
+  clientJeton = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID, scope: SCOPE,
+    callback: r => {
+      if(r && r.access_token){
+        etat.token = r.access_token;
+        E("etatConnexion").textContent = "Connecté en lecture seule.";
+        E("btnConnexion").textContent = "Renouveler l'accès";
+        activer("e2", true);
+        noter("Jeton d'accès obtenu.","oauth");
+        E("racine").focus();
+      } else {
+        E("etatConnexion").textContent = "Accès refusé.";
+        noter("Réponse OAuth sans jeton : "+JSON.stringify(r||{}),"oauth");
+      }
+    },
+    error_callback: e => {
+      E("etatConnexion").textContent = "Échec de la connexion.";
+      noter("Erreur OAuth : "+(e && e.type ? e.type : "inconnue")+
+            ". Vérifier que l'origine de cette page est autorisée sur le client OAuth.","oauth");
+    }
+  });
+  noter("Client OAuth prêt.","oauth");
+}
+preparerAuth();
+E("btnConnexion").onclick = () => clientJeton && clientJeton.requestAccessToken();
+
+/* ---------- appels Drive ---------------------------------------------- */
+async function drive(params){
+  const u = new URL("https://www.googleapis.com/drive/v3/files");
+  Object.entries(params).forEach(([k,v]) => u.searchParams.set(k,v));
+  const r = await fetch(u, { headers:{ Authorization:"Bearer "+etat.token }});
+  if(!r.ok){
+    const t = await r.text();
+    throw new Error(`Drive ${r.status} — ${t.slice(0,180)}`);
+  }
+  return r.json();
+}
+async function lister(q){
+  let page = null, tout = [], n = 0;
+  do{
+    const rep = await drive({
+      q, pageSize:1000, orderBy:"name", corpora:"allDrives",
+      supportsAllDrives:true, includeItemsFromAllDrives:true,
+      fields:"nextPageToken,files(id,name,mimeType,modifiedTime,size,webViewLink)",
+      ...(page ? {pageToken:page} : {})
+    });
+    tout = tout.concat(rep.files || []); page = rep.nextPageToken; n++;
+  } while(page && n < 20);
+  if(n > 1) noter(`Pagination : ${n} pages pour ${tout.length} éléments.`,"drive");
+  return tout;
+}
+async function enFile(taches){
+  const res = []; let i = 0;
+  const ouvriers = Array.from({length:Math.min(CONCURRENCE, taches.length)}, async () => {
+    while(i < taches.length){ const k = i++; res[k] = await taches[k](); }
+  });
+  await Promise.all(ouvriers);
+  return res;
+}
+
+/* ---------- typage ---------------------------------------------------- */
+function lireDossier(nom){
+  const m = nom.match(/^\s*(\d{1,6})\s*[-–—_.]?\s*(.*)$/);
+  if(!m) return { numero:null, libelle:nom.trim() };
+  return { numero:m[1].padStart(4,"0"), libelle:(m[2]||"").trim() || "—" };
+}
+function lirePiece(nom, numeroDossier){
+  const base = nom.replace(/\.[A-Za-z0-9]+$/,"");
+  const parts = base.split("_");
+  let numero = null, code = null, date = null, voie = "convention";
+  if(/^\d{1,6}$/.test(parts[0])) numero = parts[0].padStart(4,"0");
+  const brut = (parts[1]||"").toUpperCase().replace(/[^A-Z]/g,"");
+  if(TYPES[brut]) code = brut;
+  const dt = parts.find(p => /^\d{8}$/.test(p));
+  if(dt) date = `${dt.slice(0,4)}-${dt.slice(4,6)}-${dt.slice(6,8)}`;
+
+  if(!code){
+    voie = "repli";
+    for(const [re, c] of REPLI){ if(re.test(base)){ code = c; break; } }
+  }
+  if(!code){ code = "AUTRE"; voie = "inconnu"; }
+
+  const anomalies = [];
+  if(voie === "repli")   anomalies.push(`type deviné : ${nom}`);
+  if(voie === "inconnu") anomalies.push(`pièce non typée : ${nom}`);
+  if(numero && numeroDossier && numero !== numeroDossier)
+    anomalies.push(`n° discordant (${numero}) : ${nom}`);
+  if(!numero) anomalies.push(`n° absent du nom : ${nom}`);
+  return { code, voie, date, anomalies };
+}
+
+/* ---------- 2. scan --------------------------------------------------- */
+function extraireId(v){
+  v = (v||"").trim();
+  const m = v.match(/[-\w]{25,}/);
+  return m ? m[0] : v;
+}
+E("btnScan").onclick = async () => {
+  const id = extraireId(E("racine").value);
+  if(!id){ progresser("Indique l'identifiant du dossier racine."); return; }
+  etat.racine = id; E("btnScan").disabled = true;
+  try{
+    progresser("Lecture des sous-dossiers…");
+    noter(`Scan du dossier racine ${id}.`,"scan");
+    const dossiers = await lister(`'${id}' in parents and mimeType='${MIME_DOSSIER}' and trashed=false`);
+    if(!dossiers.length){
+      progresser("Aucun sous-dossier. Vérifie l'identifiant, et que le dossier t'est bien partagé.");
+      noter("0 sous-dossier trouvé.","scan"); E("btnScan").disabled = false; return;
+    }
+    noter(`${dossiers.length} sous-dossiers.`,"scan");
+
+    let faits = 0;
+    const taches = dossiers.map(d => async () => {
+      const { numero, libelle } = lireDossier(d.name);
+      const enfants = await lister(`'${d.id}' in parents and trashed=false`);
+      const sousDossiers = enfants.filter(f => f.mimeType === MIME_DOSSIER);
+      let fichiers = enfants.filter(f => f.mimeType !== MIME_DOSSIER);
+      let imbrique = 0;
+      for(const sd of sousDossiers){
+        const p = await lister(`'${sd.id}' in parents and trashed=false`);
+        const f = p.filter(x => x.mimeType !== MIME_DOSSIER);
+        imbrique += f.length; fichiers = fichiers.concat(f);
+      }
+      const anomalies = [];
+      if(!numero) anomalies.push("numéro d'immeuble illisible dans le nom du dossier");
+      if(imbrique) anomalies.push(`${imbrique} pièce(s) rangée(s) en sous-dossier`);
+      if(!fichiers.length) anomalies.push("sous-dossier vide");
+
+      const pieces = fichiers.map(f => {
+        const l = lirePiece(f.name, numero);
+        anomalies.push(...l.anomalies);
+        return { fileId:f.id, nom:f.name, mimeType:f.mimeType, modifiedTime:f.modifiedTime,
+                 lien:f.webViewLink, type:l.code, source:l.voie, dateActe:l.date };
+      }).sort((a,b) => (a.dateActe||"9").localeCompare(b.dateActe||"9"));
+
+      faits++; progresser(`Lecture des pièces… ${faits}/${dossiers.length}`);
+      return { numero, libelle, folderId:d.id, nom:d.name, pieces, anomalies, selection:true };
+    });
+
+    const imm = await enFile(taches);
+    imm.sort((a,b) => (a.numero||"zzzz").localeCompare(b.numero||"zzzz"));
+    etat.immeubles = imm;
+
+    const nbP = imm.reduce((s,i) => s + i.pieces.length, 0);
+    const nbDev = imm.reduce((s,i) => s + i.pieces.filter(p => p.source !== "convention").length, 0);
+    noter(`${imm.length} immeubles, ${nbP} pièces, dont ${nbDev} typée(s) par repli ou non typée(s).`,"scan");
+    progresser(`${imm.length} immeubles lus.`);
+    dessiner(); activer("e3", true); activer("e4", true);
+  }catch(e){
+    progresser("La lecture a échoué. Le journal indique la cause.");
+    noter("Échec : "+e.message,"scan");
+  }
+  E("btnScan").disabled = false;
+};
+
+/* ---------- 3. tableau ------------------------------------------------ */
+const aType = (i,t) => i.pieces.some(p => p.type === t);
+const devine = (i,t) => i.pieces.some(p => p.type === t && p.source !== "convention");
+function classe(i){
+  if(!aType(i,"TITRE")) return "rouge";
+  if(!aType(i,"ETATHYP") || i.anomalies.length) return "ambre";
+  return "conforme";
+}
+function pastille(i,t){
+  if(!aType(i,t)) return '<span class="past non" title="absent"></span>';
+  if(devine(i,t))  return '<span class="past dev" title="présent, type deviné"></span>';
+  return '<span class="past ok" title="présent et déclaré"></span>';
+}
+function dessiner(){
+  const masquer = E("fMasquer").checked;
+  const tb = E("corpsTable"); tb.innerHTML = "";
+  etat.immeubles.forEach((i, k) => {
+    const c = classe(i);
+    if(masquer && c === "conforme") return;
+    const puces = {};
+    i.pieces.forEach(p => {
+      const cle = p.type + (p.source !== "convention" ? "*" : "");
+      puces[cle] = (puces[cle] || 0) + 1;
+    });
+    const tr = document.createElement("tr");
+    tr.dataset.sel = i.selection ? "1" : "0";
+    tr.innerHTML = `
+      <td class="ctr"><input type="checkbox" data-k="${k}" ${i.selection ? "checked" : ""}
+          aria-label="Retenir l'immeuble ${i.numero || i.libelle}"></td>
+      <td class="num">${i.numero || "—"}</td>
+      <td>${echapper(i.libelle)}<div class="puces">${i.pieces.length} pièce(s)</div></td>
+      <td class="ctr">${pastille(i,"TITRE")}</td>
+      <td class="ctr">${pastille(i,"ETATHYP")}</td>
+      <td>${Object.entries(puces).map(([t,n]) => {
+            const dev = t.endsWith("*"); const code = dev ? t.slice(0,-1) : t;
+            return `<span class="puce${dev ? " dev" : ""}" title="${TYPES[code]||code}${dev ? " — deviné" : ""}">${code}${n>1 ? " ×"+n : ""}</span>`;
+          }).join("") || '<span class="puces">aucune</span>'}</td>
+      <td class="anom">${i.anomalies.length
+            ? echapper(i.anomalies.slice(0,3).join(" · ")) + (i.anomalies.length>3 ? ` · +${i.anomalies.length-3}` : "")
+            : ""}</td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll("input[type=checkbox]").forEach(cb => {
+    cb.onchange = () => { etat.immeubles[+cb.dataset.k].selection = cb.checked;
+      cb.closest("tr").dataset.sel = cb.checked ? "1" : "0"; synthese(); };
+  });
+  synthese();
+}
+function echapper(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+function synthese(){
+  const im = etat.immeubles;
+  const n = t => im.filter(i => classe(i) === t).length;
+  const sel = im.filter(i => i.selection).length;
+  E("synthese").innerHTML = [
+    ["", im.length, "immeubles"],
+    ["cnd", n("conforme"), "conformes"],
+    ["amb", n("ambre"), "à vérifier"],
+    ["rge", n("rouge"), "sans titre"],
+    ["", im.reduce((s,i)=>s+i.pieces.length,0), "pièces"],
+    ["", sel, "retenus"]
+  ].map(([c,v,l]) => `<div class="case ${c}"><div class="n">${v}</div><div class="l">${l}</div></div>`).join("");
+  E("etatRendu").textContent = sel ? "" : "Aucun immeuble retenu.";
+}
+E("btnTout").onclick = () => { etat.immeubles.forEach(i => i.selection = true); dessiner(); };
+E("btnRien").onclick = () => { etat.immeubles.forEach(i => i.selection = false); dessiner(); };
+E("btnIncomplets").onclick = () => {
+  etat.immeubles.forEach(i => i.selection = classe(i) !== "conforme"); dessiner();
+  noter("Sélection réduite aux immeubles incomplets.","selection");
+};
+E("fMasquer").onchange = dessiner;
+
+/* ---------- 4. modèles ------------------------------------------------ */
+E("modeles").innerHTML = MODELES.map(m => `
+  <label class="modele" ${m.pret ? "" : 'aria-disabled="true"'}>
+    <span class="t"><input type="radio" name="modele" value="${m.id}"
+      ${m.id === etat.modele ? "checked" : ""} ${m.pret ? "" : "disabled"}>${m.t}
+      <span class="etat ${m.pret ? "" : "futur"}">${m.pret ? "disponible" : "à construire"}</span></span>
+    <span class="d">${m.d}</span>
+  </label>`).join("");
+document.querySelectorAll('input[name=modele]').forEach(r => r.onchange = () => etat.modele = r.value);
+
+function retenus(){ return etat.immeubles.filter(i => i.selection); }
+function telecharger(blob, nom){
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  noter(`Fichier produit : ${nom}`,"export");
+}
+function horodatage(){ const d = new Date(); const p = n => String(n).padStart(2,"0");
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`; }
+
+E("btnManifeste").onclick = () => {
+  const sel = retenus();
+  if(!sel.length){ E("etatRendu").textContent = "Retiens au moins un immeuble."; return; }
+  const man = {
+    outil:"TRENTE", version:"1.0", genereLe:new Date().toISOString(),
+    dossierRacine:etat.racine, nbImmeubles:sel.length,
+    immeubles: sel.map(i => ({
+      numero:i.numero, libelle:i.libelle, folderId:i.folderId, statut:classe(i),
+      anomalies:i.anomalies,
+      pieces:i.pieces.map(p => ({ type:p.type, libelleType:TYPES[p.type]||p.type, source:p.source,
+        dateActe:p.dateActe, nom:p.nom, fileId:p.fileId, mimeType:p.mimeType,
+        modifiedTime:p.modifiedTime, lien:p.lien }))
+    }))
+  };
+  telecharger(new Blob([JSON.stringify(man,null,2)],{type:"application/json"}),
+    `${horodatage()} TRENTE manifeste.json`);
+  E("etatRendu").textContent = `Manifeste de ${sel.length} immeuble(s) exporté.`;
+};
+
+E("btnRendre").onclick = async () => {
+  const sel = retenus();
+  if(!sel.length){ E("etatRendu").textContent = "Retiens au moins un immeuble."; return; }
+  if(etat.modele !== "inventaire"){
+    E("etatRendu").textContent = "Ce modèle attend la couche d'analyse."; return;
+  }
+  if(typeof ExcelJS === "undefined"){
+    E("etatRendu").textContent = "La bibliothèque Excel n'a pas chargé. Recharge la page.";
+    noter("ExcelJS absent du contexte.","export"); return;
+  }
+  E("btnRendre").disabled = true; E("etatRendu").textContent = "Construction du classeur…";
+  try{ await inventaireExcel(sel); E("etatRendu").textContent = `Inventaire de ${sel.length} immeuble(s) produit.`; }
+  catch(e){ E("etatRendu").textContent = "Échec de la construction."; noter("Excel : "+e.message,"export"); }
+  E("btnRendre").disabled = false;
+};
+
+async function inventaireExcel(sel){
+  const NUIT = "FF0F2238", CANARD = "FF33838B", ORANGE = "FFFF982D", CARMIN = "FFA01040", GRIS = "FF657D96";
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "TRENTE — FIDAL Notaires Paris"; wb.created = new Date();
+
+  const enTete = (ws, cols) => {
+    ws.columns = cols.map(c => ({ header:c.h, key:c.k, width:c.w }));
+    const l = ws.getRow(1);
+    l.font = { name:"Calibri", size:11, bold:true, color:{argb:"FFFFFFFF"} };
+    l.fill = { type:"pattern", pattern:"solid", fgColor:{argb:NUIT} };
+    l.alignment = { vertical:"middle", wrapText:true };
+    l.height = 28;                                    // en-tête replié, pas figé au hasard
+    ws.views = [{ state:"frozen", ySplit:1 }];
+    ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:cols.length} };
+  };
+
+  /* onglet 1 — un immeuble par ligne */
+  const w1 = wb.addWorksheet("Immeubles");
+  enTete(w1, [
+    {h:"N°",k:"n",w:9}, {h:"Libellé",k:"l",w:44}, {h:"Statut",k:"s",w:15},
+    {h:"Titre",k:"t",w:9}, {h:"État hyp.",k:"e",w:12}, {h:"Pièces",k:"p",w:9},
+    {h:"Types présents",k:"y",w:34}, {h:"Anomalies",k:"a",w:62}
+  ]);
+  const mot = { conforme:"Conforme", ambre:"À vérifier", rouge:"Sans titre" };
+  sel.forEach(i => {
+    const c = classe(i);
+    const r = w1.addRow({
+      n:i.numero || "—", l:i.libelle, s:mot[c],
+      t:aType(i,"TITRE") ? "oui" : "non", e:aType(i,"ETATHYP") ? "oui" : "non",
+      p:i.pieces.length,
+      y:[...new Set(i.pieces.map(p => p.type))].join(", "),
+      a:i.anomalies.join(" · ")
+    });
+    r.font = { name:"Calibri", size:11 };
+    r.alignment = { vertical:"top", wrapText:true };
+    r.getCell("s").font = { name:"Calibri", size:11, bold:true,
+      color:{argb: c === "conforme" ? CANARD : c === "ambre" ? ORANGE : CARMIN }};
+    ["t","e"].forEach(k => { if(r.getCell(k).value === "non")
+      r.getCell(k).font = { name:"Calibri", size:11, color:{argb:CARMIN} }; });
+    r.getCell("a").font = { name:"Calibri", size:10, color:{argb:GRIS} };
+  });
+
+  /* onglet 2 — une pièce par ligne */
+  const w2 = wb.addWorksheet("Pièces");
+  enTete(w2, [
+    {h:"N° immeuble",k:"n",w:14}, {h:"Type",k:"t",w:12}, {h:"Nature de la pièce",k:"d",w:30},
+    {h:"Typage",k:"s",w:13}, {h:"Date de l'acte",k:"da",w:15},
+    {h:"Nom du fichier",k:"f",w:56}, {h:"Lien Drive",k:"u",w:20}
+  ]);
+  sel.forEach(i => i.pieces.forEach(p => {
+    const r = w2.addRow({
+      n:i.numero || "—", t:p.type, d:TYPES[p.type] || p.type,
+      s:p.source === "convention" ? "déclaré" : p.source === "repli" ? "deviné" : "non typé",
+      da:p.dateActe || "", f:p.nom, u:p.lien ? "ouvrir" : ""
+    });
+    r.font = { name:"Calibri", size:11 };
+    if(p.source !== "convention")
+      r.getCell("s").font = { name:"Calibri", size:11, bold:true, color:{argb:ORANGE} };
+    if(p.lien) r.getCell("u").value = { text:"ouvrir", hyperlink:p.lien };
+  }));
+
+  const buf = await wb.xlsx.writeBuffer();
+  telecharger(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),
+    `${horodatage()} TRENTE inventaire.xlsx`);
+}
+</script>
+</body>
+</html>
