@@ -120,6 +120,29 @@ details.journal summary{padding:11px 18px; cursor:pointer; font-size:13px; color
   line-height:1.65; color:var(--encre); white-space:pre-wrap; max-height:300px; overflow:auto}
 .journal .vide{color:var(--grisbleu)}
 
+/* ---------- étape 6 : analyse et contrôle ---------- */
+.puce.auto{border-color:var(--jaunetypo); background:var(--jauneforme); color:var(--nuit)}
+.mode{display:inline-block; font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; padding:1px 6px}
+.mode.auto{background:#E6F2F3; color:var(--canard)}
+.mode.mixte{background:#FFF3E0; color:#8A4A00}
+.mode.manuel{background:#FDF2F5; color:var(--carmin)}
+.mode.valide{background:var(--nuit); color:var(--blanc)}
+.controle{display:grid; grid-template-columns:minmax(280px,2fr) minmax(320px,3fr); gap:16px; margin-top:16px}
+@media(max-width:900px){.controle{grid-template-columns:1fr}}
+.colonne{border:1px solid var(--filet); background:var(--blanc); padding:14px; max-height:70vh; overflow:auto}
+.colonne h3{font-size:15px; margin-bottom:10px}
+.colonne h4{font-family:"Segoe UI",sans-serif; font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--grisbleu); margin:14px 0 6px; font-weight:600}
+.src{border-left:3px solid var(--filet); padding:6px 10px; margin-bottom:8px; font-size:12.5px; background:var(--papier)}
+.src .ou{font-size:11px; color:var(--canard); font-weight:600}
+.src.carmin{border-left-color:var(--carmin)}
+.src.orange{border-left-color:var(--orange)}
+textarea{font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--filet); background:var(--blanc); color:var(--encre); width:100%; line-height:1.45; resize:vertical}
+textarea:focus{border-color:var(--canard)}
+.vigLigne{display:grid; grid-template-columns:96px 1fr; gap:6px 10px; padding:8px 0; border-bottom:1px solid var(--filet2); font-size:13px}
+.vigLigne select{max-width:96px; padding:4px 6px; font-size:12px}
+.vigLigne .v{font-weight:600; color:var(--nuit)}
+.vigLigne textarea{min-height:44px; font-size:12.5px}
+.ok{color:var(--canard)}
 footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px; color:var(--grisbleu)}
 .progression{font-size:13px; color:var(--canard); margin-top:10px; font-variant-numeric:tabular-nums}
 @media(max-width:640px){
@@ -279,6 +302,42 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
     </div>
   </section>
 
+  <!-- 6 ------------------------------------------------------------------ -->
+  <section class="etape" id="e6" data-inactif="1">
+    <div class="enTete"><span class="rang">6</span><h2>Analyse des titres et états hypothécaires</h2>
+      <div class="aide">Extraction déterministe, sans appel de modèle. Toute énonciation cite sa pièce et sa page.</div></div>
+    <div class="contenu">
+      <div class="avis" id="avisAnalyse">
+        TRENTE lit le texte des pièces OP, OPA et EHF et en tire une <strong>proposition</strong> : formalités,
+        actes, chaîne, vigilances, servitudes. Rien n'entre dans la fiche sans votre validation, immeuble par immeuble.
+        Une pièce scannée sans couche texte sort du flux automatique et se saisit à la main.
+      </div>
+      <div class="ligneControles" style="margin-bottom:14px">
+        <button id="btnLireTitres">Lire les titres et états</button>
+        <button class="sec" id="btnRapportNommage">Rapport de nommage</button>
+        <button class="sec" id="btnNoteManquants">Note d'actes à requérir</button>
+        <button class="sec" id="btnExportAnalyses">Exporter les analyses (JSON)</button>
+        <button class="sec" id="btnOublierAnalyses" title="Efface les analyses mémorisées sur ce poste pour ce portefeuille">Oublier les analyses mémorisées</button>
+        <span id="etatAnalyse" style="font-size:13.5px;color:var(--grisbleu)"></span>
+      </div>
+      <div class="progression" id="progAnalyse" hidden></div>
+      <div class="cadreTable">
+        <table>
+          <thead><tr>
+            <th style="width:64px">N°</th>
+            <th style="width:30%">Pièces lues</th>
+            <th style="width:110px">Mode</th>
+            <th style="width:22%">Résultat</th>
+            <th style="width:120px">État</th>
+            <th>Action</th>
+          </tr></thead>
+          <tbody id="corpsAnalyse"></tbody>
+        </table>
+      </div>
+      <div id="panneauControle" hidden></div>
+    </div>
+  </section>
+
   <details class="journal" id="journal">
     <summary>Journal de diagnostic</summary>
     <pre id="journalTexte" class="vide">Rien à signaler pour l'instant.</pre>
@@ -287,8 +346,8 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
 </main>
 
 <footer>
-  TRENTE v1.0 — couche inventaire. L'analyse juridique des titres (chaîne trentenaire,
-  vigilances, clause d'origine de propriété) reste hors de cette couche : elle s'appuie sur le manifeste.
+  TRENTE v2.0 — inventaire, contrôle cadastral et extraction déterministe des titres. Aucun appel de modèle :
+  chaque énonciation cite sa pièce et sa page, et rien n'entre dans une fiche sans validation humaine.
 </footer>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -344,10 +403,10 @@ const REPLI = [
 ];
 
 const MODELES = [
-  {id:"inventaire", t:"Inventaire du portefeuille", d:"Un onglet par immeuble et un onglet par pièce, à la charte. Ce que tu peux produire aujourd'hui.", pret:true},
-  {id:"fiche",   t:"Fiche par immeuble",  d:"Chaîne trentenaire, vigilances, clause. Un document Word par immeuble retenu.", pret:false},
-  {id:"risques", t:"Note de risques consolidée", d:"Les seuls feux rouges du portefeuille, triés par gravité.", pret:false},
-  {id:"clauses", t:"Clauses d'origine de propriété", d:"Les clauses seules, prêtes à intégrer aux actes.", pret:false}
+  {id:"inventaire", t:"Inventaire du portefeuille", d:"Un onglet par immeuble et un onglet par pièce, à la charte.", pret:true},
+  {id:"fiche",   t:"Fiches par immeuble",  d:"Désignation, chaîne, vigilances, plans. Passe par « Choisir les fiches à éditer ». Page de garde en tête.", pret:true},
+  {id:"risques", t:"Note de risques consolidée", d:"Les vigilances carmin puis orange des analyses validées, triées par gravité puis par immeuble.", pret:true},
+  {id:"clauses", t:"Clauses d'origine de propriété", d:"Un projet de clause par immeuble analysé, à reprendre dans l'acte.", pret:true}
 ];
 
 /* =====================================================================
@@ -585,7 +644,7 @@ function lienPaint(insee, nomCommune, r, tab, total, cadre){
 
 /* ---------------------------------------------------------------------- */
 const E = id => document.getElementById(id);
-const etat = { token:null, racine:null, immeubles:[], modele:"inventaire", journal:[], analyses:{}, plans:{} };
+const etat = { token:null, racine:null, racineNom:null, immeubles:[], modele:"inventaire", journal:[], analyses:{}, plans:{} };
 
 function noter(msg, voie){
   const t = new Date().toLocaleTimeString("fr-FR");
@@ -681,6 +740,10 @@ function lirePiece(nom, numeroDossier){
     numero = m[1];
     const brut = m[2].toUpperCase();
     if(TYPES[brut]) code = brut;
+    /* Numéro d'ordre accolé au code (0041OP1, 0041PLAN2) : le code reste
+       celui de la fiche OUT 2.1.1, le chiffre distingue plusieurs pièces de
+       même nature. Toléré sans anomalie. */
+    else { const sansNum = brut.replace(/\d+$/, ""); if(sansNum && TYPES[sansNum]) code = sansNum; }
     reste = (m[3] || "").trim();
   }
   /* Réf. cadastrales : lettre(s) + chiffres, ex. CD124. Date éventuelle : 8 chiffres. */
@@ -822,9 +885,11 @@ E("btnScan").onclick = async () => {
     const nbDev = imm.reduce((s,i) => s + i.pieces.filter(p => p.source !== "charte").length, 0);
     noter(`${imm.length} immeubles, ${nbP} pièces, dont ${nbDev} typée(s) par repli ou non typée(s).`,"scan");
     progresser(`${imm.length} immeubles lus.`);
-    dessiner(); activer("e3", true); activer("e4", true); activer("e5", true);
+    dessiner(); activer("e3", true); activer("e4", true); activer("e5", true); activer("e6", true);
     const nom = await nomDossier(id);
+    etat.racineNom = nom || null;
     if(nom){ memoriserDossier(nom, id); noter(`Dossier « ${nom} » mémorisé dans la liste.`,"dossiers"); }
+    etat.analyses = {}; chargerControle(); dessinerAnalyse();
   }catch(e){
     progresser("La lecture a échoué. Le journal indique la cause.");
     noter("Échec : "+e.message,"scan");
@@ -853,7 +918,7 @@ function dessiner(){
     if(masquer && c === "conforme") return;
     const puces = {};
     i.pieces.forEach(p => {
-      const cle = p.type + (p.source !== "charte" ? "*" : "");
+      const cle = p.type + (p.source === "contenu" ? "!" : p.source !== "charte" ? "*" : "");
       puces[cle] = (puces[cle] || 0) + 1;
     });
     const tr = document.createElement("tr");
@@ -866,8 +931,8 @@ function dessiner(){
       <td class="ctr">${pastille(i,CODES_TITRE)}</td>
       <td class="ctr">${pastille(i,["EHF"])}</td>
       <td>${Object.entries(puces).map(([t,n]) => {
-            const dev = t.endsWith("*"); const code = dev ? t.slice(0,-1) : t;
-            return `<span class="puce${dev ? " dev" : ""}" title="${TYPES[code]||code}${dev ? " — deviné" : ""}">${code}${n>1 ? " ×"+n : ""}</span>`;
+            const dev = t.endsWith("*"), auto = t.endsWith("!"); const code = (dev || auto) ? t.slice(0,-1) : t;
+            return `<span class="puce${dev ? " dev" : auto ? " auto" : ""}" title="${TYPES[code]||code}${dev ? " — deviné d'après le nom" : auto ? " — reconnu par le contenu, à vérifier" : ""}">${code}${n>1 ? " ×"+n : ""}</span>`;
           }).join("") || '<span class="puces">aucune</span>'}</td>
       <td class="anom">${i.anomalies.length
             ? echapper(i.anomalies.slice(0,3).join(" · ")) + (i.anomalies.length>3 ? ` · +${i.anomalies.length-3}` : "")
@@ -876,10 +941,13 @@ function dessiner(){
   });
   tb.querySelectorAll("input[type=checkbox]").forEach(cb => {
     cb.onchange = () => { etat.immeubles[+cb.dataset.k].selection = cb.checked;
-      cb.closest("tr").dataset.sel = cb.checked ? "1" : "0"; synthese(); };
+      cb.closest("tr").dataset.sel = cb.checked ? "1" : "0"; synthese();
+      /* Les étapes 5 et 6 ne montrent que les immeubles retenus : les redessiner. */
+      if(E("corpsRef")) dessinerRef(); if(E("corpsAnalyse")) dessinerAnalyse(); };
   });
   synthese();
   if(E("corpsRef")) dessinerRef();
+  if(E("corpsAnalyse")) dessinerAnalyse();
 }
 function echapper(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
 function synthese(){
@@ -1175,8 +1243,20 @@ E("btnManifeste").onclick = () => {
 E("btnRendre").onclick = async () => {
   const sel = retenus();
   if(!sel.length){ E("etatRendu").textContent = "Retiens au moins un immeuble."; return; }
-  if(etat.modele !== "inventaire"){
-    E("etatRendu").textContent = "Ce modèle attend la couche d'analyse."; return;
+  if(etat.modele === "fiche"){
+    E("panneauFiches").hidden = false;
+    if(etat.immeubles.every(i => i.fiche === undefined)) etat.immeubles.forEach(i => { i.fiche = i.selection; });
+    dessinerCommunes(); E("panneauFiches").scrollIntoView({ behavior:"smooth" });
+    E("etatRendu").textContent = "Choisissez les fiches puis « Valider et produire le document »."; return;
+  }
+  if(etat.modele === "risques" || etat.modele === "clauses"){
+    const avec = sel.filter(i => etat.analyses[i.numero]);
+    if(!avec.length){ E("etatRendu").textContent = "Aucune analyse validée : lisez et validez les titres à l'étape 6."; return; }
+    E("btnRendre").disabled = true; E("etatRendu").textContent = "Construction du document…";
+    try { await (etat.modele === "risques" ? noteRisques(avec) : clausesOrigine(avec));
+      E("etatRendu").textContent = `Document produit pour ${avec.length} immeuble(s) analysé(s)${avec.length < sel.length ? ` (${sel.length - avec.length} sans analyse, ignoré(s))` : ""}.`; }
+    catch(e){ E("etatRendu").textContent = "Échec de la construction."; noter("Word : " + e.message, "export"); }
+    E("btnRendre").disabled = false; return;
   }
   if(typeof ExcelJS === "undefined"){
     E("etatRendu").textContent = "La bibliothèque Excel n'a pas chargé. Recharge la page.";
@@ -1191,7 +1271,7 @@ E("btnRendre").onclick = async () => {
 /* =====================================================================
    ÉDITION DES FICHES — sélection par commune puis document unique
    ===================================================================== */
-const DOSSIER_LIB = "AUDIT FUSION LOGIS MÉTROPOLE";
+const dossierLib = () => (etat.racineNom || "PORTEFEUILLE").toUpperCase();
 const A_COMPLETER = "À compléter par l'analyse du titre de propriété et de l'état hypothécaire.";
 
 function communeDe(i){
@@ -1499,6 +1579,13 @@ function sectionsFiches(D, liste){
 
       t1("2. Origine de propriété"),
       t2("2.1 Effet relatif"), ...bloc21,
+      ...(A.chaine && A.chaine.length ? [
+        p("Chaîne des mutations relevée dans les pièces lues (tableau modifiable) :", { after:80 }),
+        table([1100, 1700, 2300, 2500, 1472], ["Date", "Nature", "Notaire / autorité", "Publication", "Source"],
+          A.chaine.map(r => new TableRow({ children:[
+            cell(r.date || "—", 1100, { bold:true }), cell(r.nature || "—", 1700), cell(r.notaire || "—", 2300),
+            cell(r.publication || "—", 2500), cell(r.source || "", 1472, { color:GRIS, size:16 }) ]}))),
+        p("", { after:60 }) ] : []),
       t2("2.2 Origine de propriété"),
       ...(A.origine ? paras(A.origine) : [attente(aTitre)]),
       t2("2.3 Origine de propriété antérieure"),
@@ -1512,6 +1599,7 @@ function sectionsFiches(D, liste){
       ...(A.servitudes ? paras(A.servitudes) : [attente(aTitre)]),
 
       t1("4. Points de vigilance"),
+      p(methodeDe(A, i), { it:true, color:GRIS, size:17, after:100 }),
       t2("4.1 Analyse des éléments transmis"), ...bloc41,
       t2("4.2 Éléments à demander pour compléter le dossier"),
       ...manques.map(m => p(m, { after:100 })),
@@ -1556,7 +1644,7 @@ function sectionsFiches(D, liste){
       headers: { default: new Header({ children:[ new Paragraph({
         border:{ bottom:{ style:BorderStyle.SINGLE, size:8, color:NUIT, space:6 } },
         spacing:{ after:240 },
-        children:[new TextRun({ text:`${DOSSIER_LIB} / ${i.numero || "—"}`, font:SANS, size:16, color:GRIS })] }) ]}) },
+        children:[new TextRun({ text:`${dossierLib()} / ${i.numero || "—"}`, font:SANS, size:16, color:GRIS })] }) ]}) },
       footers: { default: new Footer({ children:[ new Paragraph({
         spacing:{ before:120 }, tabStops:[{ type:"right", position:L }],
         children:[
@@ -1566,6 +1654,44 @@ function sectionsFiches(D, liste){
       children: enfants,
     };
   });
+}
+
+/* Mention de méthode (addendum 29/08) : le mode de traitement de chaque
+   immeuble est tracé dans la fiche, en tête de la section 4. */
+function methodeDe(A, i){
+  if(!A || !A.mode) return "Méthode : aucune analyse des titres n'a été validée pour cet immeuble ; la section 4.1 attend l'analyse.";
+  const lib = { automatique:"extraction déterministe du texte des pièces", mixte:"extraction déterministe, une ou plusieurs pièces scannées sans couche texte traitées à la main",
+    manuel:"saisie manuelle (pièces scannées sans couche texte ou absentes)", "sans pièce":"aucune pièce OP, OPA ou EHF au dossier" }[A.mode] || A.mode;
+  const pieces = (A.piecesLues || []).map(x => x.nom + (x.scanne ? " (scanné)" : "")).join(", ");
+  const v = A.validation || {};
+  return `Méthode : ${lib}${pieces ? " — pièces lues : " + pieces : ""}. ${v.le ? "Validé le " + new Date(v.le).toLocaleDateString("fr-FR") + (v.par ? " par " + v.par : "") + "." : "Proposition non validée."} Toute énonciation cite sa pièce et sa page ; ce qui n'a pas été relevé reste « à vérifier ».`;
+}
+
+/* Page de garde du document d'ensemble : le nom du cabinet n'apparaît qu'ici. */
+function pageDeGarde(D, liste){
+  const { Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle, TableLayoutType, ShadingType } = D;
+  const p = (t, o={}) => new Paragraph({ alignment:o.al || AlignmentType.LEFT, spacing:{ after:o.after === undefined ? 120 : o.after, before:o.before || 0 },
+    children:[new TextRun({ text:t, font:o.font || "Segoe UI", size:o.size || 20, color:o.color || "1A1A1A", bold:o.bold, italics:o.it })] });
+  const filet = { style:BorderStyle.SINGLE, size:4, color:"E1E5EA" };
+  const w = [1000, 2600, 3472, 2000];
+  const cell = (t, k, o={}) => new TableCell({ width:{ size:w[k], type:WidthType.DXA }, margins:{ top:60,bottom:60,left:100,right:100 },
+    shading: o.fill ? { type:ShadingType.CLEAR, fill:o.fill, color:"auto" } : undefined,
+    children:[new Paragraph({ spacing:{ after:0 }, children:[new TextRun({ text:t, font:"Segoe UI", size:17, bold:o.bold, color:o.color || "1A1A1A" })] })] });
+  const etatDe = (i) => { const A = etat.analyses[i.numero]; return A && A.validation ? "analyse validée" : A ? "analyse importée" : "inventaire seul"; };
+  const nbValid = liste.filter(i => etat.analyses[i.numero]).length;
+  return { properties:{ page:{ margin:{ top:2400, bottom:1417, left:1417, right:1417 } } }, children:[
+    new Paragraph({ border:{ bottom:{ style:BorderStyle.SINGLE, size:12, color:"0F2238", space:8 } }, spacing:{ after:600 },
+      children:[new TextRun({ text:"FIDAL NOTAIRES", font:"Georgia", size:40, color:"0F2238", characterSpacing:60 })] }),
+    p("Analyse des documents mis à disposition", { font:"Georgia", size:44, color:"0F2238", after:120 }),
+    p("Origine de propriété — inventaire, contrôle cadastral et analyse des titres", { font:"Georgia", size:24, color:"657D96", after:600 }),
+    p(dossierLib(), { size:24, bold:true, after:60 }),
+    p(`${liste.length} immeuble(s) — ${nbValid} analyse(s) de titres — édité le ${new Date().toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" })}`, { color:"657D96", after:480 }),
+    new Table({ columnWidths:w, width:{ size:9072, type:WidthType.DXA }, layout:TableLayoutType.FIXED,
+      borders:{ top:filet,bottom:filet,left:filet,right:filet,insideHorizontal:filet,insideVertical:filet },
+      rows:[ new TableRow({ tableHeader:true, children:["N°","Commune","Libellé","Analyse"].map((t,k) => cell(t, k, { bold:true, color:"FFFFFF", fill:"0F2238" })) }),
+        ...liste.map(i => new TableRow({ children:[ cell(i.numero || "—", 0, { bold:true }), cell(communeDe(i), 1), cell(i.libelle || "", 2), cell(etatDe(i), 3, { color: etat.analyses[i.numero] ? "33838B" : "657D96" }) ] })) ] }),
+    p("Document de travail établi par TRENTE. Les énonciations d'origine de propriété constituent une analyse juridique (Cass. 3e civ., 28 mars 2024, n° 22-17.415) : chacune cite sa pièce et sa page, et ce qui n'a pas été relevé reste à vérifier.", { it:true, size:17, color:"657D96", before:480 }),
+  ] };
 }
 
 async function editerFiches(){
@@ -1581,7 +1707,7 @@ async function editerFiches(){
   try {
     const doc = new D.Document({
       styles: { default: { document: { run: { font:"Segoe UI", size:20, color:"1A1A1A" } } } },
-      sections: sectionsFiches(D, liste),
+      sections: [pageDeGarde(D, liste), ...sectionsFiches(D, liste)],
     });
     const blob = await D.Packer.toBlob(doc);
     telecharger(blob, `${horodatage()} TRENTE fiches.docx`);
@@ -1628,6 +1754,849 @@ E("ficAnalyses").onchange = async () => {
   }
   E("ficAnalyses").value = "";
 };
+
+/* =====================================================================
+   MODULE ORIGINE — couche 2 DÉTERMINISTE (décision du 29/08/2026)
+   Aucun appel de modèle. On lit le texte des pièces par pdf.js et l'on
+   extrait par expressions régulières : formalités de publicité foncière,
+   références d'actes, désignation au titre, mentions de vigilance,
+   servitudes. Chaque énonciation cite sa pièce et sa page (mémo v1 § 7) ;
+   à défaut de mention trouvée, la case reste « à vérifier ».
+   Les fonctions sont pures : texte paginé en entrée, contrat JSON en sortie.
+   ===================================================================== */
+const MOIS = { janvier:1, fevrier:2, février:2, mars:3, avril:4, mai:5, juin:6, juillet:7,
+  aout:8, août:8, septembre:9, octobre:10, novembre:11, decembre:12, décembre:12 };
+const RE_DATE_LETTRES = /(\d{1,2}|1er|premier)\s+(janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[ûu]t|septembre|octobre|novembre|d[ée]cembre)\s+(1[89]\d{2}|20\d{2})/i;
+const RE_DATE_CHIFFRES = /(\d{1,2})[\/.\-](\d{1,2})[\/.\-](1[89]\d{2}|20\d{2})/;
+
+/* « 5 décembre 1983 » ou « 05/12/1983 » → { iso, texte } ; null sinon. */
+function lireDate(s){
+  if(!s) return null;
+  let m = s.match(RE_DATE_LETTRES);
+  if(m){
+    const j = /^(1er|premier)$/i.test(m[1]) ? 1 : Number(m[1]);
+    const mo = MOIS[m[2].toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")]
+            || MOIS[m[2].toLowerCase()];
+    if(j >= 1 && j <= 31 && mo) return { iso: `${m[3]}-${String(mo).padStart(2,"0")}-${String(j).padStart(2,"0")}`, texte: m[0] };
+  }
+  m = s.match(RE_DATE_CHIFFRES);
+  if(m){
+    const j = Number(m[1]), mo = Number(m[2]);
+    if(j >= 1 && j <= 31 && mo >= 1 && mo <= 12)
+      return { iso: `${m[3]}-${String(mo).padStart(2,"0")}-${String(j).padStart(2,"0")}`, texte: m[0] };
+  }
+  return null;
+}
+const dateFR = (iso) => iso ? iso.split("-").reverse().join("/") : "";
+
+/* Natures d'actes — la première qui répond l'emporte, l'ordre compte :
+   « donation-partage » avant « donation » avant « partage ». */
+const NATURES = [
+  [/donation[-\s]partage\s+conjonctive/i, "Donation-partage conjonctive", "translatif"],
+  [/donation[-\s]partage/i, "Donation-partage", "translatif"],
+  [/donation|libéralité|liberalite/i, "Donation", "translatif"],
+  [/attestation\s+(?:immobili[èe]re|notari[ée]e|de\s+propri[ée]t[ée])|attestation\s+apr[èe]s\s+d[ée]c[èe]s/i, "Attestation immobilière après décès", "declaratif"],
+  [/certificat\s+de\s+propri[ée]t[ée]/i, "Certificat de propriété", "declaratif"],
+  [/notori[ée]t[ée]/i, "Acte de notoriété", "declaratif"],
+  [/succession|d[ée]volution\s+successorale|h[ée]ritier/i, "Succession", "declaratif"],
+  [/licitation/i, "Licitation", "translatif"],
+  [/partage/i, "Partage", "declaratif"],
+  [/[ée]change/i, "Échange", "translatif"],
+  [/adjudication|vente\s+aux\s+ench[èe]res|saisie\s+immobili[èe]re/i, "Adjudication", "translatif"],
+  [/expropriation|ordonnance\s+d.expropriation|cession\s+amiable/i, "Expropriation / cession amiable", "translatif"],
+  [/\bapport(?:\s+en\s+soci[ée]t[ée]|\s+en\s+nature)?/i, "Apport en société", "translatif"],
+  [/fusion|absorption|transmission\s+universelle/i, "Fusion-absorption", "translatif"],
+  [/vente\s+en\s+l.[ée]tat\s+futur|VEFA/i, "Vente en l'état futur d'achèvement", "translatif"],
+  [/vente|acquisition|acqu[ée]reur|vendeur|cession/i, "Vente", "translatif"],
+  [/bail\s+emphyt[ée]otique|bail\s+[àa]\s+construction/i, "Bail emphytéotique / à construction", "autre"],
+  [/legs|testament/i, "Legs", "translatif"],
+];
+function natureDe(fenetre){
+  for(const [re, nom, sorte] of NATURES) if(re.test(fenetre)) return { nom, sorte };
+  return { nom: "Nature non déterminée", sorte: "inconnu" };
+}
+
+/* Numéro de page d'une position dans le texte concaténé. */
+function pageDe(pages, pos){
+  let cumul = 0;
+  for(let k = 0; k < pages.length; k++){
+    cumul += pages[k].length + 1;
+    if(pos < cumul) return k + 1;
+  }
+  return pages.length;
+}
+/* La ligne qui contient une position — l'état hypothécaire est un tableau,
+   la nature d'une formalité se lit sur SA ligne, pas sur la suivante. */
+function ligneDe(t, pos){
+  const a = t.lastIndexOf("\n", pos) + 1;
+  let b = t.indexOf("\n", pos); if(b < 0) b = t.length;
+  return t.slice(a, b);
+}
+const extrait = (t, pos, avant = 60, apres = 140) =>
+  (pos > avant ? "… " : "") + t.slice(Math.max(0, pos - avant), pos + apres).replace(/\s+/g, " ").trim()
+  + (pos + apres < t.length ? " …" : "");
+
+/* Le texte est-il exploitable ? Un PDF scanné sans couche texte rend
+   quelques dizaines de caractères par page au mieux (en-têtes, numéros). */
+function estScanne(pages){
+  const total = pages.reduce((s, p) => s + p.replace(/\s+/g, "").length, 0);
+  return { scanne: pages.length > 0 && total / pages.length < 120, caracteres: total, pages: pages.length };
+}
+
+/* ---------- FORMALITÉS DE PUBLICITÉ FONCIÈRE ---------- */
+/* Formes rencontrées :
+   « publié au service de la publicité foncière de LILLE 1 le 17 janvier 1984 volume 6662 numéro 6 »
+   « publié au bureau des hypothèques de LILLE 1er bureau, le 17/01/1984, vol. 6662 n° 6 »
+   « publié au 1er bureau des hypothèques de LILLE, le 17 janvier 1984, volume 6662 n° 6 »
+   « sous les références 2019P 12345 » (dossiers postérieurs à 2000)                */
+const RE_PUBLI = /publi[ée]e?s?\s+(?:au|à\s+la|a\s+la|aux?)\s+(?:(?:\d+(?:er|ème|e)?\s+)?bureau\s+des\s+hypoth[èe]ques|service\s+de\s+la\s+publicit[ée]\s+fonci[èe]re|conservation\s+des\s+hypoth[èe]ques|SPF)\s+(?:de|d['’]|du)\s*([A-ZÉÈÀ][A-Za-zÉÈÀéèàâêîôûç'’\- ]{2,40}?)\b(?:\s*,?\s*(?:\d+(?:er|ème|e)?\s+bureau))?\s*,?\s*(?:\ble\b|en\s+date\s+du)\s+([^,;]{6,30}?)\s*,?\s*(?:volume|vol\.?)\s*(\d{1,6}\s?[A-Z]?)\s*,?\s*(?:num[ée]ro|n°|n\s*°|no\.?|N°)\s*(\d{1,6})/gi;
+const RE_REF_P = /\b((?:19|20)\d{2}\s?P\s?\d{1,6})\b/g;
+/* Relevé des formalités d'un état hypothécaire : lignes structurées
+   « 17/01/1984 Vol 6662 N° 6 » suivies ou précédées de la nature. */
+const RE_FORMALITE_EHF = /(\d{2}\/\d{2}\/(?:19|20)\d{2})\s*(?:Vol(?:ume)?\.?\s*)(\d{1,6}\s?[A-Z]?)\s*(?:N°|n°|No\.?|Num[ée]ro)\s*(\d{1,6})/g;
+
+function extrairePublications(pages, nomPiece){
+  const t = pages.join("\n");
+  const out = [], vus = new Set();
+  let m;
+  RE_PUBLI.lastIndex = 0;
+  while((m = RE_PUBLI.exec(t)) !== null){
+    const d = lireDate(m[2]);
+    const cle = `${(m[3]||"").replace(/\s/g,"")}-${m[4]}`;
+    if(vus.has(cle)) continue; vus.add(cle);
+    const fen = t.slice(Math.max(0, m.index - 400), m.index);
+    const nat = natureDe(fen);
+    out.push({ bureau: m[1].trim(), date: d ? d.iso : null, volume: m[3].replace(/\s/g,""), numero: m[4],
+      nature: nat.nom, sorte: nat.sorte, page: pageDe(pages, m.index), source: nomPiece,
+      extrait: extrait(t, m.index, 200, 160) });
+  }
+  RE_FORMALITE_EHF.lastIndex = 0;
+  while((m = RE_FORMALITE_EHF.exec(t)) !== null){
+    const cle = `${m[2].replace(/\s/g,"")}-${m[3]}`;
+    if(vus.has(cle)) continue; vus.add(cle);
+    const d = lireDate(m[1]);
+    const nat = natureDe(ligneDe(t, m.index).slice(0, 260));
+    out.push({ bureau: null, date: d ? d.iso : null, volume: m[2].replace(/\s/g,""), numero: m[3],
+      nature: nat.nom, sorte: nat.sorte, page: pageDe(pages, m.index), source: nomPiece,
+      extrait: extrait(t, m.index, 40, 200) });
+  }
+  RE_REF_P.lastIndex = 0;
+  while((m = RE_REF_P.exec(t)) !== null){
+    const ref = m[1].replace(/\s/g, "");
+    if(vus.has(ref)) continue; vus.add(ref);
+    const fen = ligneDe(t, m.index);
+    const nat = natureDe(fen);
+    const d = lireDate(fen);
+    out.push({ bureau: null, date: d ? d.iso : null, volume: ref.slice(0, 5), numero: ref.slice(5),
+      nature: nat.nom, sorte: nat.sorte, page: pageDe(pages, m.index), source: nomPiece,
+      extrait: extrait(t, m.index, 200, 100) });
+  }
+  return out;
+}
+const formaliteTexte = (f) => `${f.bureau ? f.bureau + ", " : ""}${f.date ? dateFR(f.date) + ", " : ""}vol. ${f.volume} n° ${f.numero}`;
+
+/* ---------- RÉFÉRENCES D'ACTES ---------- */
+/* « acte reçu par Maître Jean DUPONT, notaire à LILLE, le 5 décembre 1983 »
+   « suivant acte passé devant Me DUPONT notaire à Lille en date du 5/12/1983 »
+   « aux termes d'un acte reçu par Maître X, notaire associé à Y, les 4 et 5 décembre 1983 » */
+const DATE_SRC = String.raw`(?:\d{1,2}(?:er)?\s+(?:et\s+)?)+(?:janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[ûu]t|septembre|octobre|novembre|d[ée]cembre)\s+(?:1[89]|20)\d{2}|\d{1,2}[\/.\-]\d{1,2}[\/.\-](?:1[89]|20)\d{2}`;
+const RE_ACTE = new RegExp(String.raw`\b(acte|contrat|proc[èe]s[-\s]verbal|ordonnance|jugement|d[ée]cision|arr[êe]t[ée]|attestation|certificat)((?:\s+(?:de\s+|d['’]\s*|du\s+|des\s+)[\wéèêàâîôûç'’\-]+(?:\s+[\wéèêàâîôûç'’\-]+){0,2})?)\s+(?:authentique\s+|notari[ée]e?\s+)?(?:re[çc]ue?|dress[ée]e?|pass[ée]e?|[ée]tablie?|rendue?|prononc[ée]e?|d[ée]livr[ée]e?)\s+(?:par|devant|par-devant)\s+(?:Ma[îi]tre|Me|M\.|Monsieur|Madame|Mme)?\s*([^,.;]{2,80}?)\s*,?\s*(?:notaire(?:s)?(?:\s+associ[ée]e?s?)?\s+(?:à|a|au)\s+([^,.;]{2,50}?))?\s*,?\s*(?:\ble\b|\bles\b|en\s+date\s+(?:du|des))\s+(${DATE_SRC})`, "gi");
+
+function extraireActes(pages, nomPiece){
+  const t = pages.join("\n");
+  const out = [], vus = new Set();
+  let m;
+  RE_ACTE.lastIndex = 0;
+  while((m = RE_ACTE.exec(t)) !== null){
+    const d = lireDate(m[5].replace(/^\d{1,2}(?:er)?\s+et\s+/, ""));
+    if(!d) continue;
+    const notaire = m[3].trim(), lieu = (m[4] || "").trim();
+    const cle = `${d.iso}-${notaire.toUpperCase()}`;
+    if(vus.has(cle)) continue; vus.add(cle);
+    /* La nature se lit d'abord dans le qualificatif (« acte de vente »,
+       « ordonnance d'expropriation »), puis dans la fenêtre environnante. */
+    let nat = natureDe((m[1] + " " + m[2]).replace(/^acte\s*$/i, ""));
+    if(nat.sorte === "inconnu") nat = natureDe(t.slice(Math.max(0, m.index - 300), m.index + 200));
+    out.push({ date: d.iso, notaire, lieu: lieu || null, nature: nat.nom, sorte: nat.sorte,
+      page: pageDe(pages, m.index), source: nomPiece, extrait: extrait(t, m.index, 120, 220) });
+  }
+  return out;
+}
+
+/* ---------- DÉSIGNATION AU TITRE ---------- */
+const RE_DESIG = /\b(?:section|Section|SECTION)\s+([A-Z]{1,2})\s*(?:,|n°|num[ée]ro|N°|no)?\s*(\d{1,4})\b([^.;]{0,160}?)(\d{1,3})\s*(?:ha|hectares?)\s*(\d{1,2})\s*(?:a|ares?)\s*(\d{1,2})\s*(?:ca|centiares?)/g;
+const RE_DESIG_COURT = /\b([A-Z]{1,2})\s*(?:n°|N°)?\s*(\d{1,4})\b[^.;]{0,120}?(?:pour|d[’']une\s+(?:contenance|superficie)\s+de|contenance\s+(?:cadastrale\s+)?de)\s*(\d{1,2})\s*(?:a|ares?)\s*(?:et\s+)?(\d{1,2})\s*(?:ca|centiares?)/g;
+
+function extraireDesignation(pages, nomPiece){
+  const t = pages.join("\n");
+  const out = [], vus = new Set();
+  let m;
+  RE_DESIG.lastIndex = 0;
+  while((m = RE_DESIG.exec(t)) !== null){
+    const cle = m[1] + String(Number(m[2]));
+    if(vus.has(cle)) continue; vus.add(cle);
+    const ca = Number(m[4]) * 10000 + Number(m[5]) * 100 + Number(m[6]);
+    out.push({ parcelle: `${m[1]} ${Number(m[2])}`, contenanceM2: ca, contenance: haCa2(ca),
+      mention: m[3].replace(/\s+/g, " ").trim().replace(/^[,\s]+|[,\s]+$/g, ""),
+      page: pageDe(pages, m.index), source: nomPiece, extrait: extrait(t, m.index, 40, 200) });
+  }
+  RE_DESIG_COURT.lastIndex = 0;
+  while((m = RE_DESIG_COURT.exec(t)) !== null){
+    const cle = m[1] + String(Number(m[2]));
+    if(vus.has(cle)) continue; vus.add(cle);
+    const ca = Number(m[3]) * 100 + Number(m[4]);
+    out.push({ parcelle: `${m[1]} ${Number(m[2])}`, contenanceM2: ca, contenance: haCa2(ca), mention: "",
+      page: pageDe(pages, m.index), source: nomPiece, extrait: extrait(t, m.index, 40, 200) });
+  }
+  return out;
+}
+function haCa2(m2){
+  const ha = Math.floor(m2 / 10000), a = Math.floor((m2 % 10000) / 100), ca = Math.round(m2 % 100);
+  return `${String(ha).padStart(2,"0")} ha ${String(a).padStart(2,"0")} a ${String(ca).padStart(2,"0")} ca`;
+}
+
+/* ---------- VIGILANCES — les contrôles du socle doctrinal (mémo v1 § 6) ---------- */
+/* Chaque contrôle : libellé, expressions qui le déclenchent, gravité de la
+   mention si elle est relevée, et ce qu'on écrit quand rien n'est trouvé.
+   Rien n'est conclu positivement : une mention relevée est « à vérifier »,
+   une mention à haut risque sort en carmin, une absence de mention reste orange. */
+const CONTROLES = [
+  { id:"924-4", verif:"Donation non consolidée — art. 924-4 C. civ.", re:/donation|donateur|donataire|lib[ée]ralit[ée]/i, si:"carmin",
+    trouve:"Une donation figure dans la chaîne : intervention du donateur et de tous ses héritiers nés et vivants à vérifier (art. 924-4).",
+    absent:"Aucune mention de donation relevée dans les pièces lues." },
+  { id:"dpc", verif:"Donation-partage conjonctive — second décès", re:/donation[-\s]partage\s+conjonctive|conjonctive/i, si:"carmin",
+    trouve:"Donation-partage conjonctive relevée : le risque ne se révèle qu'au second décès.", absent:"Aucune mention relevée." },
+  { id:"soulte", verif:"Soulte de partage — hypothèque légale du copartageant", re:/soulte/i, si:"carmin",
+    trouve:"Une soulte est mentionnée : paiement et radiation de l'hypothèque légale du copartageant à vérifier.", absent:"Aucune mention de soulte relevée." },
+  { id:"918", verif:"Vente à un successible en ligne directe — art. 918 C. civ.", re:/rente\s+viag[èe]re|fonds\s+perdus|r[ée]serve\s+d.usufruit|successible/i, si:"orange",
+    trouve:"Mention de rente viagère, fonds perdus ou réserve d'usufruit : présomption de libéralité à examiner si l'acquéreur est successible.", absent:"Aucune mention relevée." },
+  { id:"inalien", verif:"Clause d'inaliénabilité", re:/inali[ée]nabilit[ée]|interdiction\s+d.ali[ée]ner|interdiction\s+de\s+vendre/i, si:"carmin",
+    trouve:"Clause d'inaliénabilité ou interdiction d'aliéner relevée : portée et durée à vérifier.", absent:"Aucune clause d'inaliénabilité relevée." },
+  { id:"vefa", verif:"VEFA — clause anti-spéculative, droit de préférence public", re:/anti[-\s]?sp[ée]culati|droit\s+de\s+pr[ée]f[ée]rence|pacte\s+de\s+pr[ée]f[ée]rence|en\s+l.[ée]tat\s+futur/i, si:"orange",
+    trouve:"Clause anti-spéculative ou droit de préférence relevé : échéance et bénéficiaire à vérifier.", absent:"Aucune mention relevée." },
+  { id:"tontine", verif:"Tontine — pacte tontinier", re:/tontin|accroissement/i, si:"carmin",
+    trouve:"Clause de tontine ou d'accroissement relevée : décès effectif du co-acquéreur et risque de requalification à vérifier.", absent:"Aucune mention relevée." },
+  { id:"remere", verif:"Réméré — faculté de rachat", re:/r[ée]m[ée]r[ée]|facult[ée]\s+de\s+rachat/i, si:"carmin",
+    trouve:"Faculté de rachat relevée : expiration du délai de cinq ans à vérifier.", absent:"Aucune mention relevée." },
+  { id:"licit", verif:"Licitation — retrait successoral, préemption", re:/licitation|retrait\s+successoral/i, si:"orange",
+    trouve:"Licitation relevée : retrait successoral et droits de préemption à vérifier.", absent:"Aucune mention relevée." },
+  { id:"collective", verif:"Procédure collective ou surendettement du disposant", re:/liquidation\s+judiciaire|redressement\s+judiciaire|proc[ée]dure\s+collective|surendettement|mandataire\s+liquidateur/i, si:"carmin",
+    trouve:"Procédure collective ou surendettement mentionné : pouvoirs du disposant et autorisation du juge à vérifier.", absent:"Aucune mention relevée." },
+  { id:"matrimonial", verif:"Régime matrimonial et pouvoir de disposer seul — art. 1424 et 215 al. 3", re:/r[ée]gime\s+(?:de\s+la\s+)?communaut[ée]|s[ée]paration\s+de\s+biens|contrat\s+de\s+mariage|bien\s+propre|logement\s+de\s+la\s+famille/i, si:"orange",
+    trouve:"Mention du régime matrimonial relevée : pouvoir du disposant de vendre seul à vérifier.", absent:"Aucune mention du régime matrimonial relevée : à vérifier sur l'acte." },
+  { id:"capacite", verif:"Capacité du disposant — tutelle, curatelle, insanité d'esprit", re:/tutelle|curatelle|sauvegarde\s+de\s+justice|habilitation\s+familiale|juge\s+des\s+tutelles|incapable/i, si:"carmin",
+    trouve:"Mesure de protection mentionnée : autorisation du juge et régularité de l'acte à vérifier.", absent:"Aucune mention de mesure de protection relevée." },
+  { id:"privilege", verif:"Privilège de vendeur, hypothèques — radiées, périmées, éteintes ?", re:/privil[èe]ge\s+de\s+vendeur|hypoth[èe]que\s+(?:conventionnelle|l[ée]gale|judiciaire)|inscription\s+(?:d.hypoth|de\s+privil)|prêteur\s+de\s+deniers|p[ée]rim[ée]e|radi[ée]e|mainlev[ée]e/i, si:"orange",
+    trouve:"Inscription ou privilège mentionné : radiation, péremption ou extinction à établir ; prix payé ?", absent:"Aucune inscription relevée dans le texte lu : à confirmer sur l'état hypothécaire." },
+  { id:"purge", verif:"Cause d'arrêt de la chaîne — expropriation, saisie, aménagement foncier", re:/expropriation|ordonnance\s+d.expropriation|saisie\s+immobili[èe]re|am[ée]nagement\s+foncier|remembrement/i, si:"orange",
+    trouve:"Expropriation, saisie ou aménagement foncier relevé : purge des droits antérieurs — les vérifications antérieures sont sans objet, mais les servitudes survivent.", absent:"Aucune cause d'arrêt relevée." },
+  { id:"charges", verif:"Cahier des charges, ZAC, lotissement, association syndicale", re:/cahier\s+des\s+charges|zone\s+d.am[ée]nagement\s+concert[ée]|\bZAC\b|lotissement|association\s+syndicale|r[èe]glement\s+de\s+lotissement/i, si:"carmin",
+    trouve:"Cahier des charges, ZAC ou association syndicale relevé : obligations en cas de mise en vente (notification, agrément) à vérifier — c'est là qu'était le risque réel du cas 0042.", absent:"Aucune mention relevée." },
+  { id:"construction", verif:"Construction — permis, conformité, prescriptions", re:/permis\s+de\s+construire|d[ée]claration\s+d.ach[èe]vement|conformit[ée]|certificat\s+d.urbanisme/i, si:"orange",
+    trouve:"Construction ou autorisation d'urbanisme mentionnée : conformité et délais de prescription (3 ans pénal, 10 ans civil) à vérifier.", absent:"Aucune mention relevée." },
+  { id:"usufruit", verif:"Démembrement — usufruit, nue-propriété", re:/usufruit|nue?[-\s]propri[ée]t[ée]|usufruitier/i, si:"orange",
+    trouve:"Démembrement de propriété mentionné : extinction de l'usufruit à établir.", absent:"Aucune mention relevée." },
+  { id:"preemption", verif:"Préemption — SAFER, urbain, locataire", re:/pr[ée]emption|SAFER|droit\s+de\s+pr[ée]emption\s+urbain/i, si:"orange",
+    trouve:"Droit de préemption mentionné : purge à vérifier lors de la mutation.", absent:"Aucune mention relevée." },
+];
+
+function extraireVigilances(lectures){
+  /* lectures : [{ nom, pages }] — toutes les pièces lues de l'immeuble. */
+  return CONTROLES.map(c => {
+    const hits = [];
+    for(const L of lectures){
+      const t = L.pages.join("\n");
+      const re = new RegExp(c.re.source, "gi");
+      let m, n = 0;
+      while((m = re.exec(t)) !== null && n < 3){
+        hits.push({ source: L.nom, page: pageDe(L.pages, m.index), extrait: extrait(t, m.index, 90, 150) });
+        n++;
+      }
+    }
+    if(hits.length){
+      return { etat: c.si, verification: c.verif, conclusion: c.trouve,
+        sources: hits.map(h => `${h.source} p. ${h.page}`).filter((v, k, a) => a.indexOf(v) === k).join(" ; "),
+        extraits: hits, id: c.id };
+    }
+    return { etat: "orange", verification: c.verif, conclusion: c.absent + " À vérifier.", sources: lectures.length ? lectures.map(L => L.nom).join(" ; ") : "aucune pièce lue", extraits: [], id: c.id };
+  });
+}
+
+/* ---------- SERVITUDES ---------- */
+function extraireServitudes(lectures){
+  const out = [];
+  for(const L of lectures){
+    const t = L.pages.join("\n");
+    const re = /[^.;]{0,160}servitude[^.;]{0,220}[.;]/gi;
+    let m, n = 0;
+    while((m = re.exec(t)) !== null && n < 12){
+      const s = m[0].replace(/\s+/g, " ").trim();
+      if(s.length < 30) continue;
+      out.push(`${s} (${L.nom}, p. ${pageDe(L.pages, m.index)})`);
+      n++;
+    }
+  }
+  return out;
+}
+
+/* ---------- CHAÎNE ET ALERTE TRENTENAIRE ---------- */
+function construireChaine(actes, publications){
+  const rows = [];
+  actes.forEach(a => rows.push({ date: a.date, nature: a.nature, sorte: a.sorte,
+    notaire: a.notaire + (a.lieu ? ", notaire à " + a.lieu : ""), publication: "", source: `${a.source} p. ${a.page}` }));
+  publications.forEach(f => {
+    const proche = rows.find(r => r.date && f.date && Math.abs(new Date(r.date) - new Date(f.date)) < 1000*3600*24*400 && !r.publication);
+    if(proche) proche.publication = formaliteTexte(f);
+    else rows.push({ date: f.date, nature: f.nature, sorte: f.sorte, notaire: "", publication: formaliteTexte(f), source: `${f.source} p. ${f.page}` });
+  });
+  rows.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  return rows;
+}
+function alerteTrentenaire(chaine, aujourdhui = new Date()){
+  const translatifs = chaine.filter(r => r.sorte === "translatif" && r.date);
+  if(!translatifs.length) return "Aucun acte translatif daté n'a pu être relevé dans les pièces lues : l'origine trentenaire n'est pas établie.";
+  const plusAncien = translatifs[translatifs.length - 1];
+  const limite = new Date(aujourdhui); limite.setFullYear(limite.getFullYear() - 30);
+  const purge = chaine.some(r => /Expropriation|Adjudication/.test(r.nature));
+  if(new Date(plusAncien.date) > limite && !purge)
+    return `Le plus ancien acte translatif relevé date du ${dateFR(plusAncien.date)} (${plusAncien.nature}) : moins de trente ans. Origine antérieure à requérir jusqu'au premier titre translatif de plus de trente ans — on ne s'arrête jamais sur une succession.`;
+  return null;
+}
+
+/* ---------- ACTES CITÉS MAIS NON PRODUITS (addendum v4, cas 2) ---------- */
+function actesManquants(chaine, pieces, lectures){
+  /* Un acte cité est « produit » si une pièce porte sa date dans son nom
+     (convention AAAAMMJJ), ou s'il est l'acte le plus récent relevé dans une
+     pièce OP/OPA lue — c'est alors le titre lui-même, qui est au dossier. */
+  const datesProduites = new Set(pieces.map(p => p.dateActe).filter(Boolean));
+  (lectures || []).filter(L => (L.type === "OP" || L.type === "OPA") && !L.scanne).forEach(L => {
+    const propres = chaine.filter(r => r.date && r.source && r.source.startsWith(L.nom + " ")).sort((x, y) => y.date.localeCompare(x.date));
+    if(propres.length) datesProduites.add(propres[0].date);
+  });
+  return chaine.filter(r => r.date && !datesProduites.has(r.date) && r.sorte !== "inconnu")
+    .map(r => ({ date: r.date, nature: r.nature, notaire: r.notaire, publication: r.publication, source: r.source }));
+}
+
+/* ---------- TYPAGE PAR CONTENU (addendum v4, cas 1, niveau 2) ---------- */
+const TYPAGE_CONTENU = [
+  ["EHF", /(?:[ée]tat|relev[ée])\s+(?:hypoth[ée]caire|des\s+formalit[ée]s)|service\s+de\s+la\s+publicit[ée]\s+fonci[èe]re|registre\s+des\s+d[ée]p[ôo]ts|copie\s+de\s+fiche|r[ée]quisition/gi],
+  ["M1", /extrait\s+cadastral|mod[èe]le\s+1|conforme\s+[àa]\s+la\s+documentation\s+cadastrale/gi],
+  ["EM", /relev[ée]\s+de\s+propri[ée]t[ée]|extrait\s+de\s+matrice|matrice\s+cadastrale/gi],
+  ["PLAN", /extrait\s+du\s+plan\s+cadastral|plan\s+cadastral|[ée]chelle\s+d.origine/gi],
+  ["OP", /(?:acte|contrat)\s+(?:de\s+)?vente|vendeur|acqu[ée]reur|prix\s+de\s+vente|origine\s+de\s+propri[ée]t[ée]|d[ée]signation|effet\s+relatif/gi],
+  ["ERP", /[ée]tat\s+des\s+risques|risques\s+et\s+pollutions|plan\s+de\s+pr[ée]vention/gi],
+  ["EDD", /[ée]tat\s+descriptif\s+de\s+division|r[èe]glement\s+de\s+copropri[ée]t[ée]|tanti[èe]mes|lot\s+num[ée]ro/gi],
+  ["NOTOR", /acte\s+de\s+notori[ée]t[ée]|d[ée]volution\s+successorale/gi],
+  ["ATTEST", /attestation\s+(?:immobili[èe]re|notari[ée]e)/gi],
+  ["DON", /donation|donateur|donataire/gi],
+  ["PART", /acte\s+de\s+partage|copartageant|attributaire/gi],
+  ["DDT", /diagnostic|amiante|plomb|performance\s+[ée]nerg[ée]tique|termites|loi\s+carrez/gi],
+];
+function typerParContenu(pages){
+  const t = pages.slice(0, 3).join("\n");
+  const scores = TYPAGE_CONTENU.map(([code, re]) => {
+    const n = (t.match(re) || []).length; return { code, n };
+  }).filter(s => s.n > 0).sort((a, b) => b.n - a.n);
+  if(!scores.length) return { code: null, credible: false, motif: "aucun mot-clé reconnu dans les trois premières pages" };
+  const [a, b] = scores;
+  const credible = a.n >= 3 && (!b || a.n >= 2 * b.n);
+  return { code: a.code, credible, motif: `${a.n} indice(s) pour ${a.code}` + (b ? `, ${b.n} pour ${b.code}` : ""), scores };
+}
+
+/* ---------- ASSEMBLAGE DU CONTRAT ---------- */
+function analyserImmeuble(numero, lectures, pieces, aujourdhui){
+  /* lectures : [{ nom, type, pages, scanne }] — pièces OP/OPA/EHF lues. */
+  const utiles = lectures.filter(L => !L.scanne);
+  const publications = [], actes = [], desig = [];
+  utiles.forEach(L => {
+    publications.push(...extrairePublications(L.pages, L.nom));
+    actes.push(...extraireActes(L.pages, L.nom));
+    if(L.type === "OP" || L.type === "OPA") desig.push(...extraireDesignation(L.pages, L.nom));
+  });
+  const chaine = construireChaine(actes, publications);
+  const vig = extraireVigilances(utiles);
+  const servitudes = extraireServitudes(utiles);
+  const alerte = utiles.length ? alerteTrentenaire(chaine, aujourdhui) : null;
+  const manquants = actesManquants(chaine, pieces, utiles);
+
+  const titre = chaine.find(r => r.sorte === "translatif");
+  const origine = titre
+    ? `Aux termes d'un acte${titre.notaire ? " reçu par " + titre.notaire : ""}${titre.date ? " le " + dateFR(titre.date) : ""} (${titre.nature})${titre.publication ? ", publié au service de la publicité foncière (" + titre.publication + ")" : ""}. Énonciation issue de ${titre.source}, à confirmer par lecture.`
+    : "";
+  const anterieure = chaine.filter(r => r !== titre).map(r =>
+    `${r.date ? dateFR(r.date) : "date non lue"} — ${r.nature}${r.notaire ? ", " + r.notaire : ""}${r.publication ? ", publié au service de la publicité foncière (" + r.publication + ")" : ""} (${r.source}).`);
+
+  const effetRelatif = publications.map(f => ({
+    parcelle: "", formalite: formaliteTexte(f), nature: f.nature + (f.source ? ` (${f.source} p. ${f.page})` : "") }));
+
+  const aDemander = [];
+  manquants.forEach(r => aDemander.push(`Copie de l'acte du ${dateFR(r.date)} (${r.nature}${r.notaire ? ", " + r.notaire : ""})${r.publication ? ", publié au " + r.publication : ", référence de publication à établir"} — cité par ${r.source}, non produit au dossier.`));
+  lectures.filter(L => L.scanne).forEach(L => aDemander.push(`Pièce ${L.nom} : PDF scanné sans couche texte, lecture automatique impossible — saisie manuelle ou copie numérique à requérir.`));
+
+  return {
+    mode: utiles.length ? (lectures.some(L => L.scanne) ? "mixte" : "automatique") : (lectures.length ? "manuel" : "sans pièce"),
+    piecesLues: lectures.map(L => ({ nom: L.nom, type: L.type, pages: L.pages.length, scanne: !!L.scanne })),
+    designationTitre: desig.map(d => ({ parcelle: d.parcelle, contenance: d.contenance, mention: (d.mention || "") + ` (${d.source} p. ${d.page})` })),
+    effetRelatif,
+    chaine: chaine.map(r => ({ date: r.date ? dateFR(r.date) : "", nature: r.nature, notaire: r.notaire, publication: r.publication, source: r.source })),
+    origine,
+    alerteTrentenaire: alerte,
+    origineAnterieure: anterieure,
+    servitudes,
+    vigilance: vig.map(v => ({ etat: v.etat, verification: v.verification, conclusion: v.conclusion, sources: v.sources })),
+    aDemander,
+    actesManquants: manquants.map(r => ({ ...r, date: dateFR(r.date) })),
+    extraits: { publications, actes, designation: desig, vigilances: vig.filter(v => v.extraits.length).map(v => ({ id: v.id, verification: v.verification, extraits: v.extraits })) },
+  };
+}
+
+
+
+/* =====================================================================
+   ÉTAPE 6 — LECTURE DES TITRES, CONTRÔLE ET VALIDATION
+   La proposition issue du module ORIGINE n'entre JAMAIS directement dans le
+   contrat des analyses : elle passe par l'écran de contrôle, extraits sources
+   en regard des valeurs lues, puis validation immeuble par immeuble. Le
+   travail se mémorise sur le poste (clé = portefeuille), pour être repris.
+   ===================================================================== */
+const CODES_LUS = ["OP", "OPA", "EHF"];
+const CLE_ANALYSES = () => "trente.analyses." + (etat.racine || "sans-racine");
+const CLE_OPERATEUR = "trente.operateur";
+etat.controle = {};   /* numéro → { cle, proposition, analyse, valide, valideLe, validePar, mode, lectures } */
+
+function chargerControle(){
+  try { etat.controle = JSON.parse(localStorage.getItem(CLE_ANALYSES())) || {}; } catch(e){ etat.controle = {}; }
+  Object.entries(etat.controle).forEach(([num, c]) => { if(c.valide && c.analyse) etat.analyses[num] = c.analyse; });
+  const n = Object.values(etat.controle).filter(c => c.valide).length;
+  if(n) noter(`${n} analyse(s) validée(s) retrouvée(s) sur ce poste pour ce portefeuille.`, "analyse");
+}
+function sauverControle(){
+  try {
+    const leger = {};
+    Object.entries(etat.controle).forEach(([num, c]) => {
+      leger[num] = { cle: c.cle, analyse: c.analyse || null, proposition: c.proposition || null,
+        valide: !!c.valide, valideLe: c.valideLe || null, validePar: c.validePar || null, mode: c.mode || null,
+        lectures: (c.lectures || []).map(L => ({ nom: L.nom, type: L.type, pages: L.pages.length, scanne: L.scanne })) };
+    });
+    localStorage.setItem(CLE_ANALYSES(), JSON.stringify(leger));
+  } catch(e){ noter("Mémorisation des analyses impossible : " + e.message, "analyse"); }
+}
+/* Clé de cache : identifiants et dates de modification des pièces lues.
+   Une pièce changée invalide la proposition, jamais une validation acquise
+   — celle-ci est signalée « pièces modifiées depuis » et à reprendre. */
+const cleImmeuble = (i) => i.pieces.filter(p => CODES_LUS.includes(p.type) && !p.doublon)
+  .map(p => p.fileId + "@" + p.modifiedTime).sort().join("|");
+
+/* Lecture paginée d'un PDF du Drive, en conservant les LIGNES : pdf.js rend
+   des fragments ; on les regroupe par ordonnée pour que les tableaux des états
+   hypothécaires gardent une formalité par ligne. */
+async function pagesDuPDF(fileId){
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
+    { headers: { Authorization: "Bearer " + etat.token } });
+  if(!r.ok) throw new Error("téléchargement Drive " + r.status);
+  const buf = await r.arrayBuffer();
+  if(!window.pdfjsLib) throw new Error("pdf.js n'a pas chargé");
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const doc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+  const pages = [];
+  for(let n = 1; n <= doc.numPages; n++){
+    const page = await doc.getPage(n);
+    const c = await page.getTextContent();
+    const lignes = new Map();
+    c.items.forEach(x => {
+      if(!x.str || !x.str.trim()) return;
+      const y = Math.round((x.transform ? x.transform[5] : 0) / 3);
+      if(!lignes.has(y)) lignes.set(y, []);
+      lignes.get(y).push({ x: x.transform ? x.transform[4] : 0, s: x.str });
+    });
+    const ordre = [...lignes.keys()].sort((a, b) => b - a);
+    pages.push(ordre.map(y => lignes.get(y).sort((a, b) => a.x - b.x).map(f => f.s).join(" ")).join("\n"));
+  }
+  return pages;
+}
+
+/* Déduplication des titres (addendum v4, cas 3) : deux pièces OP de même date
+   sont le même acte ; on garde la première, l'autre est signalée doublon. */
+function dedoublonner(i){
+  const vues = new Map();
+  i.pieces.forEach(p => {
+    if(!CODES_TITRE.includes(p.type) || !p.dateActe) return;
+    const cle = p.type + "@" + p.dateActe;
+    if(vues.has(cle)){ p.doublon = vues.get(cle); i.anomalies.push(`doublon : ${p.nom} reprend l'acte de ${p.doublon}`); }
+    else vues.set(cle, p.nom);
+  });
+}
+
+E("btnLireTitres").onclick = async () => {
+  const sel = retenus();
+  if(!sel.length){ E("etatAnalyse").textContent = "Aucun immeuble retenu à l'étape 3."; return; }
+  if(!window.pdfjsLib){ E("etatAnalyse").textContent = "pdf.js n'a pas chargé. Recharge la page."; return; }
+  E("btnLireTitres").disabled = true;
+  const prog = E("progAnalyse"); prog.hidden = false;
+  let n = 0, lus = 0, scans = 0, retypes = 0, sautes = 0;
+  for(const i of sel){
+    n++; prog.textContent = `Lecture des titres… ${n}/${sel.length} (immeuble ${i.numero || "?"})`;
+    const num = i.numero || i.folderId;
+    dedoublonner(i);
+
+    /* Cas 1, niveau 2 — pièces hors plan de nommage : on tente le typage par
+       le contenu des trois premières pages. Reconnu et crédible → retypé,
+       marqué, à vérifier. Insuffisant → reste tel quel, le rapport le dira. */
+    for(const p of i.pieces){
+      if(p.source === "charte" || p.source === "contenu" || !/pdf/i.test(p.mimeType || "")) continue;
+      try {
+        const pg = await pagesDuPDF(p.fileId);
+        const t = typerParContenu(pg);
+        p.typageContenu = t;
+        if(t.credible && t.code && TYPES[t.code]){
+          const avant = p.type;
+          p.type = t.code; p.source = "contenu";
+          i.anomalies = i.anomalies.filter(a => !a.endsWith(": " + p.nom));
+          i.anomalies.push(`type ${t.code} reconnu par le contenu (${avant} au nom) — À VÉRIFIER : ${p.nom}`);
+          retypes++;
+          noter(`${num} : ${p.nom} reconnu ${t.code} par son contenu (${t.motif}). Correction automatique, à contrôler.`, "typage");
+        } else {
+          noter(`${num} : ${p.nom} — typage par contenu insuffisant (${t.motif}). Renommage manuel requis.`, "typage");
+        }
+        p.pagesLues = pg;
+      } catch(e){ noter(`${num} : ${p.nom} illisible — ${e.message}.`, "typage"); }
+    }
+
+    const cle = cleImmeuble(i);
+    const c = etat.controle[num] || {};
+    if(c.valide && c.cle === cle){ sautes++; etat.analyses[num] = c.analyse; continue; }
+    if(c.valide && c.cle !== cle){ c.piecesModifiees = true; noter(`${num} : pièces modifiées depuis la validation — à reprendre.`, "analyse"); }
+
+    const pieces = i.pieces.filter(p => CODES_LUS.includes(p.type) && !p.doublon);
+    const lectures = [];
+    for(const p of pieces){
+      try {
+        const pg = p.pagesLues || await pagesDuPDF(p.fileId);
+        const sc = estScanne(pg);
+        lectures.push({ nom: p.nom, type: p.type, pages: pg, scanne: sc.scanne, caracteres: sc.caracteres });
+        lus++; if(sc.scanne) scans++;
+        noter(`${num} : ${p.nom} — ${pg.length} page(s), ${sc.caracteres} caractères${sc.scanne ? ", SANS COUCHE TEXTE : hors flux automatique" : ""}.`, "lecture");
+      } catch(e){ noter(`${num} : ${p.nom} non lu — ${e.message}.`, "lecture"); }
+    }
+    const proposition = analyserImmeuble(num, lectures, i.pieces, new Date());
+    etat.controle[num] = { ...c, cle, proposition, lectures, mode: proposition.mode,
+      valide: c.valide && c.cle === cle, analyse: c.analyse || null };
+    noter(`${num} : proposition — ${proposition.chaine.length} maillon(s), ${proposition.effetRelatif.length} formalité(s), `
+      + `${proposition.vigilance.filter(v => v.etat === "carmin").length} vigilance(s) carmin, mode ${proposition.mode}.`, "analyse");
+    dessinerAnalyse();
+  }
+  sauverControle();
+  prog.textContent = `${lus} pièce(s) lue(s)${scans ? `, ${scans} scannée(s) hors flux` : ""}${retypes ? `, ${retypes} retypée(s) par le contenu` : ""}${sautes ? `, ${sautes} immeuble(s) déjà validé(s)` : ""}.`;
+  E("etatAnalyse").textContent = "Contrôlez puis validez chaque immeuble.";
+  dessiner(); dessinerAnalyse();
+  E("btnLireTitres").disabled = false;
+};
+
+const LIB_MODE = { automatique:"automatique", mixte:"mixte", manuel:"manuel", "sans pièce":"sans pièce" };
+function dessinerAnalyse(){
+  const tb = E("corpsAnalyse"); tb.innerHTML = "";
+  retenus().forEach(i => {
+    const num = i.numero || i.folderId;
+    const c = etat.controle[num];
+    const tr = document.createElement("tr");
+    if(!c){
+      tr.innerHTML = `<td class="num">${i.numero || "—"}</td><td class="puces">${i.pieces.filter(p => CODES_LUS.includes(p.type)).map(p => p.nom).join("<br>") || "aucune pièce OP/OPA/EHF"}</td>
+        <td></td><td class="puces">non lu</td><td></td>
+        <td><button class="sec" data-man="${echapper(num)}" style="padding:3px 9px;font-size:12px">Saisie manuelle</button></td>`;
+      tb.appendChild(tr); return;
+    }
+    const P = c.proposition || {};
+    const lect = (c.lectures || []).map(L => `${echapper(L.nom)} <span class="puces">${L.pages.length || L.pages} p.${L.scanne ? ' · <span class="anom">scanné</span>' : ""}</span>`).join("<br>");
+    const carmin = (P.vigilance || []).filter(v => v.etat === "carmin").length;
+    const res = c.valide
+      ? `<span class="ok">validé</span> le ${c.valideLe ? new Date(c.valideLe).toLocaleDateString("fr-FR") : ""}${c.validePar ? " par " + echapper(c.validePar) : ""}${c.piecesModifiees ? ' · <span class="anom">pièces modifiées depuis</span>' : ""}`
+      : P.chaine ? `${P.chaine.length} maillon(s) · ${P.effetRelatif.length} formalité(s) · <span class="${carmin ? "anom" : ""}">${carmin} carmin</span>${P.alerteTrentenaire ? ' · <span class="anom">alerte trentenaire</span>' : ""}${(P.actesManquants || []).length ? ` · ${P.actesManquants.length} acte(s) à requérir` : ""}` : "—";
+    tr.innerHTML = `<td class="num">${i.numero || "—"}</td><td style="font-size:12.5px">${lect || '<span class="puces">aucune pièce lue</span>'}</td>
+      <td><span class="mode ${c.mode === "automatique" ? "auto" : c.mode === "mixte" ? "mixte" : "manuel"}">${LIB_MODE[c.mode] || c.mode || "—"}</span></td>
+      <td style="font-size:12.5px">${res}</td>
+      <td>${c.valide ? '<span class="mode valide">validé</span>' : '<span class="mode mixte">à contrôler</span>'}</td>
+      <td><button class="sec" data-ctrl="${echapper(num)}" style="padding:3px 9px;font-size:12px">${c.valide ? "Revoir" : "Contrôler"}</button></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll("button[data-ctrl]").forEach(b => b.onclick = () => ouvrirControle(b.dataset.ctrl));
+  tb.querySelectorAll("button[data-man]").forEach(b => b.onclick = () => {
+    const num = b.dataset.man;
+    etat.controle[num] = { cle: "", proposition: analyserImmeuble(num, [], [], new Date()), lectures: [], mode: "manuel", valide: false, analyse: null };
+    ouvrirControle(num);
+  });
+}
+
+/* ---------- écran de contrôle ---------- */
+const L_ = (a) => (a || []).join("\n");
+const cols = (o, ks) => ks.map(k => (o[k] == null ? "" : String(o[k]))).join(" | ");
+function ouvrirControle(num){
+  const c = etat.controle[num]; if(!c) return;
+  const A = c.analyse && c.valide ? c.analyse : (c.proposition || {});
+  const X = (c.proposition && c.proposition.extraits) || { publications:[], actes:[], designation:[], vigilances:[] };
+  const i = etat.immeubles.find(x => (x.numero || x.folderId) === num) || {};
+  const pan = E("panneauControle"); pan.hidden = false;
+  const manuel = c.mode === "manuel";
+  const operateur = (() => { try { return localStorage.getItem(CLE_OPERATEUR) || ""; } catch(e){ return ""; } })();
+
+  const srcs = [];
+  if(X.publications.length){ srcs.push("<h4>Formalités relevées</h4>"); X.publications.forEach(f => srcs.push(`<div class="src"><span class="ou">${echapper(f.source)} p. ${f.page}</span> — ${echapper(formaliteTexte(f))} · ${echapper(f.nature)}<br>${echapper(f.extrait)}</div>`)); }
+  if(X.actes.length){ srcs.push("<h4>Actes cités</h4>"); X.actes.forEach(a => srcs.push(`<div class="src"><span class="ou">${echapper(a.source)} p. ${a.page}</span> — ${dateFR(a.date)} · ${echapper(a.nature)} · ${echapper(a.notaire)}${a.lieu ? ", " + echapper(a.lieu) : ""}<br>${echapper(a.extrait)}</div>`)); }
+  if(X.designation.length){ srcs.push("<h4>Désignation au titre</h4>"); X.designation.forEach(d => srcs.push(`<div class="src"><span class="ou">${echapper(d.source)} p. ${d.page}</span> — ${echapper(d.parcelle)} · ${d.contenance}<br>${echapper(d.extrait)}</div>`)); }
+  if(X.vigilances.length){ srcs.push("<h4>Mentions de vigilance</h4>"); X.vigilances.forEach(v => v.extraits.forEach(e => srcs.push(`<div class="src ${/donation|inali|tontine|rém|collect|charges|capacit|soulte/i.test(v.verification) ? "carmin" : "orange"}"><span class="ou">${echapper(e.source)} p. ${e.page}</span> — ${echapper(v.verification)}<br>${echapper(e.extrait)}</div>`))); }
+  if(!srcs.length) srcs.push(`<div class="src">${manuel ? "Saisie manuelle : aucune pièce lue automatiquement." : "Aucune mention relevée dans les pièces lues."}</div>`);
+  (c.lectures || []).filter(L => L.scanne).forEach(L => srcs.push(`<div class="src carmin"><span class="ou">${echapper(L.nom)}</span> — PDF scanné sans couche texte (${L.caracteres || 0} caractères sur ${L.pages.length || L.pages} pages) : hors flux automatique, à saisir à la main ou à requérir en copie numérique.</div>`));
+
+  const vig = (A.vigilance && A.vigilance.length ? A.vigilance : CONTROLES.map(k => ({ etat:"orange", verification:k.verif, conclusion:"", sources:"" })));
+  pan.innerHTML = `
+    <div class="ligneControles" style="margin-top:16px;align-items:center">
+      <h3 style="font-size:16px">Immeuble ${echapper(num)}${i.libelle ? " — " + echapper(i.libelle) : ""}</h3>
+      <span class="mode ${c.mode === "automatique" ? "auto" : c.mode === "mixte" ? "mixte" : "manuel"}">${LIB_MODE[c.mode] || c.mode}</span>
+      ${c.valide ? '<span class="mode valide">validé</span>' : ""}
+      <span style="margin-left:auto"></span>
+      <label class="champ" for="operateur" style="margin:0">Validé par</label>
+      <input type="text" id="operateur" value="${echapper(operateur)}" placeholder="initiales" style="max-width:120px;padding:6px 8px">
+      <button class="sec" id="btnFermerControle">Fermer</button>
+    </div>
+    <div class="controle">
+      <div class="colonne">
+        <h3>Extraits des pièces</h3>
+        <div class="puces" style="margin-bottom:8px">Ce que le programme a lu, avec la pièce et la page. La colonne de droite est la proposition, à corriger puis valider.</div>
+        ${srcs.join("")}
+      </div>
+      <div class="colonne">
+        <h3>Analyse — à contrôler</h3>
+        <h4>1.2 Désignation au titre <span style="text-transform:none;letter-spacing:0">(parcelle | contenance | mention)</span></h4>
+        <textarea id="fDesig" rows="3">${echapper(L_((A.designationTitre || []).map(r => cols(r, ["parcelle","contenance","mention"]))))}</textarea>
+        <h4>2.1 Effet relatif <span style="text-transform:none;letter-spacing:0">(parcelle | formalité | nature)</span></h4>
+        <textarea id="fEffet" rows="3">${echapper(L_((A.effetRelatif || []).map(r => cols(r, ["parcelle","formalite","nature"]))))}</textarea>
+        <h4>Chaîne des mutations <span style="text-transform:none;letter-spacing:0">(date | nature | notaire | publication | source)</span></h4>
+        <textarea id="fChaine" rows="4">${echapper(L_((A.chaine || []).map(r => cols(r, ["date","nature","notaire","publication","source"]))))}</textarea>
+        <h4>2.2 Origine de propriété</h4>
+        <textarea id="fOrigine" rows="3">${echapper(Array.isArray(A.origine) ? A.origine.join("\n") : (A.origine || ""))}</textarea>
+        <h4>2.3 Alerte trentenaire <span style="text-transform:none;letter-spacing:0">(vide = pas d'alerte)</span></h4>
+        <textarea id="fAlerte" rows="2">${echapper(A.alerteTrentenaire || "")}</textarea>
+        <h4>2.3 Origine antérieure <span style="text-transform:none;letter-spacing:0">(un maillon par ligne)</span></h4>
+        <textarea id="fAnterieure" rows="3">${echapper(Array.isArray(A.origineAnterieure) ? A.origineAnterieure.join("\n") : (A.origineAnterieure || ""))}</textarea>
+        <h4>3. Servitudes <span style="text-transform:none;letter-spacing:0">(une par ligne)</span></h4>
+        <textarea id="fServ" rows="3">${echapper(L_(A.servitudes))}</textarea>
+        <h4>4.1 Vigilances</h4>
+        <div id="fVig">${vig.map((v, k) => `
+          <div class="vigLigne">
+            <select data-k="${k}"><option value="canard"${v.etat === "canard" ? " selected" : ""}>canard</option><option value="orange"${v.etat === "orange" ? " selected" : ""}>orange</option><option value="carmin"${v.etat === "carmin" ? " selected" : ""}>carmin</option></select>
+            <div><div class="v">${echapper(v.verification)}</div>
+              <textarea data-k="${k}" data-ch="conclusion">${echapper(v.conclusion || "")}</textarea>
+              <input type="text" data-k="${k}" data-ch="sources" value="${echapper(v.sources || "")}" placeholder="pièce et page" style="max-width:none;padding:4px 8px;font-size:12px;margin-top:4px"></div>
+          </div>`).join("")}</div>
+        <h4>4.2 Éléments à demander <span style="text-transform:none;letter-spacing:0">(un par ligne)</span></h4>
+        <textarea id="fDemander" rows="3">${echapper(L_(A.aDemander))}</textarea>
+        <div class="ligneControles" style="margin-top:14px">
+          <button id="btnValider">Valider cet immeuble</button>
+          <button class="sec" id="btnValiderSuivant">Valider et passer au suivant</button>
+          <button class="sec" id="btnReinit" ${c.proposition ? "" : "disabled"}>Revenir à la proposition</button>
+        </div>
+      </div>
+    </div>`;
+  pan.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  E("btnFermerControle").onclick = () => { pan.hidden = true; };
+  E("btnReinit").onclick = () => { c.valide = false; ouvrirControle(num); };
+  const valider = (suivant) => {
+    const lignes = (id) => E(id).value.split("\n").map(x => x.trim()).filter(Boolean);
+    const spl = (l, ks) => { const p = l.split("|").map(x => x.trim()); const o = {}; ks.forEach((k, j) => o[k] = p[j] || ""); return o; };
+    const vigs = [...E("fVig").querySelectorAll(".vigLigne")].map((el, k) => ({
+      etat: el.querySelector("select").value, verification: vig[k].verification,
+      conclusion: el.querySelector("textarea").value.trim(), sources: el.querySelector("input").value.trim() }));
+    const op = E("operateur").value.trim();
+    try { localStorage.setItem(CLE_OPERATEUR, op); } catch(e){}
+    const analyse = {
+      mode: c.mode, piecesLues: (c.proposition && c.proposition.piecesLues) || [],
+      designationTitre: lignes("fDesig").map(l => spl(l, ["parcelle","contenance","mention"])),
+      effetRelatif: lignes("fEffet").map(l => spl(l, ["parcelle","formalite","nature"])),
+      chaine: lignes("fChaine").map(l => spl(l, ["date","nature","notaire","publication","source"])),
+      origine: E("fOrigine").value.trim() || "",
+      alerteTrentenaire: E("fAlerte").value.trim() || null,
+      origineAnterieure: lignes("fAnterieure"),
+      servitudes: lignes("fServ"),
+      vigilance: vigs.filter(v => v.conclusion),
+      aDemander: lignes("fDemander"),
+      actesManquants: (c.proposition && c.proposition.actesManquants) || [],
+      validation: { le: new Date().toISOString(), par: op || null, mode: c.mode },
+    };
+    c.analyse = analyse; c.valide = true; c.valideLe = analyse.validation.le; c.validePar = op || null; c.piecesModifiees = false;
+    etat.analyses[num] = analyse;
+    sauverControle(); dessinerAnalyse();
+    noter(`${num} : analyse validée${op ? " par " + op : ""} (mode ${c.mode}).`, "analyse");
+    if(suivant){
+      const reste = retenus().map(x => x.numero || x.folderId).filter(k => etat.controle[k] && !etat.controle[k].valide);
+      if(reste.length) ouvrirControle(reste[0]); else { pan.hidden = true; E("etatAnalyse").textContent = "Tous les immeubles lus sont validés."; }
+    }
+  };
+  E("btnValider").onclick = () => valider(false);
+  E("btnValiderSuivant").onclick = () => valider(true);
+}
+
+E("btnExportAnalyses").onclick = () => {
+  const o = {};
+  Object.entries(etat.controle).forEach(([num, c]) => { if(c.valide && c.analyse) o[num] = c.analyse; });
+  const n = Object.keys(o).length;
+  if(!n){ E("etatAnalyse").textContent = "Aucune analyse validée à exporter."; return; }
+  telecharger(new Blob([JSON.stringify(o, null, 2)], { type:"application/json" }), `${horodatage()} TRENTE analyses.json`);
+  E("etatAnalyse").textContent = `${n} analyse(s) validée(s) exportée(s).`;
+};
+E("btnOublierAnalyses").onclick = () => {
+  if(!confirm("Effacer les analyses mémorisées sur ce poste pour ce portefeuille ? Exportez-les d'abord si besoin.")) return;
+  try { localStorage.removeItem(CLE_ANALYSES()); } catch(e){}
+  etat.controle = {}; etat.analyses = {}; dessinerAnalyse(); E("panneauControle").hidden = true;
+  noter("Analyses mémorisées effacées pour ce portefeuille.", "analyse");
+};
+
+/* ---------- rapport de nommage (addendum v4, cas 1, niveaux 2 et 3) ---------- */
+E("btnRapportNommage").onclick = () => {
+  const lignes = [];
+  retenus().forEach(i => i.pieces.forEach(p => {
+    if(p.source === "charte") return;
+    const num = i.numero || "????";
+    if(p.source === "contenu")
+      lignes.push(`${num}\t${p.nom}\tRETYPÉ AUTOMATIQUEMENT en ${p.type} d'après le contenu (${p.typageContenu ? p.typageContenu.motif : ""}) — à vérifier, puis renommer « ${num}${p.type}${(p.parcelles||[]).length ? " " + p.parcelles.join(" ") : ""}.pdf »`);
+    else
+      lignes.push(`${num}\t${p.nom}\tRENOMMAGE MANUEL REQUIS — type ${p.source === "repli" ? "deviné " + p.type + " d'après le nom" : "inconnu"}${p.typageContenu ? " ; contenu : " + p.typageContenu.motif : ""} — nom attendu « ${num}CODE [références].pdf », codes : ${Object.keys(TYPES).join(" ")}`);
+  }));
+  if(!lignes.length){ E("etatAnalyse").textContent = "Toutes les pièces retenues respectent le plan de nommage."; return; }
+  const txt = `TRENTE — Rapport de nommage — ${new Date().toLocaleString("fr-FR")}\nPortefeuille : ${etat.racineNom || etat.racine || ""}\n`
+    + `Plan de nommage fiche OUT 2.1.1 : NNNN + CODE collés, un espace, références cadastrales.\n\nN°\tFichier\tAction\n` + lignes.join("\n") + "\n";
+  telecharger(new Blob([txt], { type:"text/plain;charset=utf-8" }), `${horodatage()} TRENTE rapport de nommage.txt`);
+  E("etatAnalyse").textContent = `Rapport de nommage : ${lignes.length} pièce(s).`;
+};
+
+/* ---------- note d'actes à requérir (addendum v4, cas 2) ----------
+   TRENTE produit l'INSTRUCTION, jamais la demande d'état elle-même : références
+   de l'acte, référence de publication (c'est elle qui rend la demande immédiate),
+   référence du dossier de dépôt. Une note Word, un immeuble par section. */
+E("btnNoteManquants").onclick = async () => {
+  const D = window.docx; if(!D){ E("etatAnalyse").textContent = "La bibliothèque Word n'a pas chargé."; return; }
+  const items = [];
+  retenus().forEach(i => {
+    const num = i.numero || i.folderId; const c = etat.controle[num]; if(!c) return;
+    const A = (c.valide && c.analyse) || c.proposition; if(!A) return;
+    const m = (A.actesManquants || []);
+    if(m.length || A.alerteTrentenaire) items.push({ i, num, m, alerte: A.alerteTrentenaire, valide: c.valide });
+  });
+  if(!items.length){ E("etatAnalyse").textContent = "Aucun acte à requérir relevé dans les analyses."; return; }
+  const { Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle, TableLayoutType } = D;
+  const p = (t, o={}) => new Paragraph({ spacing:{ after: o.after === undefined ? 120 : o.after, before:o.before||0 }, alignment:o.al||AlignmentType.LEFT,
+    children:[new TextRun({ text:t, font:o.font||"Segoe UI", size:o.size||20, bold:o.bold, italics:o.it, color:o.color||"1A1A1A" })] });
+  const filet = { style:BorderStyle.SINGLE, size:4, color:"E1E5EA" };
+  const cell = (t, w, b) => new TableCell({ width:{ size:w, type:WidthType.DXA }, margins:{ top:60,bottom:60,left:100,right:100 },
+    children:[new Paragraph({ spacing:{ after:0 }, children:[new TextRun({ text:t, font:"Segoe UI", size:18, bold:b })] })] });
+  const enfants = [
+    p("Actes à requérir en copie", { font:"Georgia", size:32, color:"0F2238", after:60 }),
+    p(`${etat.racineNom || "Portefeuille"} — note établie le ${new Date().toLocaleDateString("fr-FR")}`, { color:"657D96", after:240 }),
+    p("Pour chaque immeuble, les actes cités par les pièces lues mais non produits au dossier. La référence de publication permet la demande immédiate de copie au service de la publicité foncière ; la demande elle-même s'établit dans le logiciel métier, hors TRENTE.", { it:true, size:18, after:240 }),
+  ];
+  const w = [1500, 1900, 2600, 3072];
+  items.forEach(({ i, num, m, alerte, valide }) => {
+    enfants.push(p(`Immeuble ${num}${i.libelle ? " — " + i.libelle : ""}${communeDe(i) ? " — " + communeDe(i) : ""}`, { font:"Georgia", size:24, color:"0F2238", before:200 }));
+    enfants.push(p(`Référence du dossier de dépôt : ${etat.racineNom || etat.racine || ""} / ${num}${valide ? "" : " — analyse NON VALIDÉE, à confirmer"}`, { size:18, color:"657D96" }));
+    if(alerte) enfants.push(p(alerte, { color:"A01040", bold:true, size:19 }));
+    if(m.length) enfants.push(new Table({ columnWidths:w, width:{ size:9072, type:WidthType.DXA }, layout:TableLayoutType.FIXED,
+      borders:{ top:filet,bottom:filet,left:filet,right:filet,insideHorizontal:filet,insideVertical:filet },
+      rows:[ new TableRow({ tableHeader:true, children:["Date de l'acte","Nature","Notaire / autorité","Référence de publication"].map((t,k) => cell(t, w[k], true)) }),
+        ...m.map(r => new TableRow({ children:[cell(r.date || "—", w[0]), cell(r.nature || "—", w[1]), cell(r.notaire || "—", w[2]), cell(r.publication || "à établir sur l'état hypothécaire", w[3])] })) ] }));
+    else enfants.push(p("Aucun acte cité non produit ; l'alerte ci-dessus appelle la requête de l'origine antérieure.", { size:18 }));
+  });
+  const doc = new D.Document({ styles:{ default:{ document:{ run:{ font:"Segoe UI", size:20 } } } },
+    sections:[{ properties:{ page:{ margin:{ top:1417,bottom:1417,left:1417,right:1417 } } }, children:enfants }] });
+  telecharger(await D.Packer.toBlob(doc), `${horodatage()} TRENTE actes à requérir.docx`);
+  E("etatAnalyse").textContent = `Note établie pour ${items.length} immeuble(s).`;
+};
+
+/* ---------- Note de risques consolidée : carmin puis orange, par immeuble ---------- */
+function outilsWord(D){
+  const { Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle, TableLayoutType, ShadingType } = D;
+  const p = (t, o={}) => new Paragraph({ alignment:o.al || AlignmentType.JUSTIFIED, spacing:{ after:o.after === undefined ? 120 : o.after, before:o.before || 0, line:240 },
+    children:[new TextRun({ text:t, font:o.font || "Segoe UI", size:o.size || 20, color:o.color || "1A1A1A", bold:o.bold, italics:o.it })] });
+  const filet = { style:BorderStyle.SINGLE, size:4, color:"E1E5EA" };
+  const cell = (t, w, o={}) => new TableCell({ width:{ size:w, type:WidthType.DXA }, margins:{ top:60,bottom:60,left:100,right:100 },
+    shading: o.fill ? { type:ShadingType.CLEAR, fill:o.fill, color:"auto" } : undefined,
+    children:[new Paragraph({ spacing:{ after:0, line:240 }, children:[new TextRun({ text:t, font:"Segoe UI", size:o.size || 17, bold:o.bold, color:o.color || "1A1A1A" })] })] });
+  const table = (ws, labels, lignes) => new Table({ columnWidths:ws, width:{ size:9072, type:WidthType.DXA }, layout:TableLayoutType.FIXED,
+    borders:{ top:filet,bottom:filet,left:filet,right:filet,insideHorizontal:filet,insideVertical:filet },
+    rows:[ new TableRow({ tableHeader:true, children:labels.map((t,k) => cell(t, ws[k], { bold:true, color:"FFFFFF", fill:"0F2238" })) }), ...lignes ] });
+  const section = (enfants) => ({ properties:{ page:{ margin:{ top:1417,bottom:1417,left:1417,right:1417 } } }, children:enfants });
+  const doc = (sections) => new D.Document({ styles:{ default:{ document:{ run:{ font:"Segoe UI", size:20, color:"1A1A1A" } } } }, sections });
+  return { p, cell, table, section, doc, TableRow, AlignmentType };
+}
+async function noteRisques(liste){
+  const D = window.docx; if(!D) throw new Error("window.docx absent");
+  const { p, cell, table, section, doc, TableRow, AlignmentType } = outilsWord(D);
+  const lignes = [];
+  liste.forEach(i => (etat.analyses[i.numero].vigilance || []).forEach(v => {
+    if(v.etat === "canard") return;
+    lignes.push({ num:i.numero, com:communeDe(i), ...v });
+  }));
+  const alertes = liste.filter(i => etat.analyses[i.numero].alerteTrentenaire).map(i => ({ num:i.numero, com:communeDe(i), txt:etat.analyses[i.numero].alerteTrentenaire }));
+  lignes.sort((a, b) => (a.etat === b.etat ? (a.num || "").localeCompare(b.num || "") : a.etat === "carmin" ? -1 : 1));
+  const w = [900, 2300, 3900, 1972];
+  const bloc = (etatV, titre) => {
+    const l = lignes.filter(x => x.etat === etatV);
+    if(!l.length) return [p(titre, { font:"Georgia", size:24, color:"0F2238", before:240, al:AlignmentType.LEFT }), p("Aucun point relevé.", { it:true, color:"657D96" })];
+    return [p(`${titre} — ${l.length}`, { font:"Georgia", size:24, color: etatV === "carmin" ? "A01040" : "8A4A00", before:240, al:AlignmentType.LEFT }),
+      table(w, ["N°", "Vérification", "Conclusion", "Sources"], l.map(x => new TableRow({ children:[
+        cell(x.num || "—", w[0], { bold:true, color: etatV === "carmin" ? "A01040" : "1A1A1A" }), cell(x.verification, w[1], { bold:true }),
+        cell(x.conclusion, w[2]), cell(x.sources || "", w[3], { color:"657D96", size:15 }) ] })))];
+  };
+  const enfants = [
+    p("Note de risques consolidée", { font:"Georgia", size:34, color:"0F2238", al:AlignmentType.LEFT, after:40 }),
+    p(`${dossierLib()} — ${liste.length} immeuble(s) analysé(s) — ${new Date().toLocaleDateString("fr-FR")}`, { color:"657D96", al:AlignmentType.LEFT, after:240 }),
+    p("Seuls figurent ici les points de vigilance carmin (haut risque) puis orange (à vérifier) des analyses validées, triés par gravité puis par immeuble. Les points en canard et les fiches complètes sont dans le document des fiches.", { it:true, size:18 }),
+    ...(alertes.length ? [p(`Alertes trentenaires — ${alertes.length}`, { font:"Georgia", size:24, color:"A01040", before:240, al:AlignmentType.LEFT }),
+      ...alertes.map(a => p(`${a.num} (${a.com}) — ${a.txt}`, { color:"A01040", size:19 }))] : []),
+    ...bloc("carmin", "Points à haut risque"),
+    ...bloc("orange", "Points à vérifier"),
+  ];
+  telecharger(await D.Packer.toBlob(doc([section(enfants)])), `${horodatage()} TRENTE note de risques.docx`);
+}
+/* ---------- Clauses d'origine de propriété : un projet par immeuble ----------
+   Rédaction déterministe depuis la chaîne validée, du connu vers l'amont
+   (propriétaire actuel d'abord). Gabarit à trous, à reprendre dans l'acte. */
+async function clausesOrigine(liste){
+  const D = window.docx; if(!D) throw new Error("window.docx absent");
+  const { p, section, doc, AlignmentType } = outilsWord(D);
+  const enfants = [
+    p("Clauses d'origine de propriété — projets", { font:"Georgia", size:34, color:"0F2238", al:AlignmentType.LEFT, after:40 }),
+    p(`${dossierLib()} — ${new Date().toLocaleDateString("fr-FR")}`, { color:"657D96", al:AlignmentType.LEFT, after:240 }),
+    p("Projets rédigés à partir des analyses validées, du propriétaire actuel vers l'amont. Les crochets signalent ce que le rédacteur doit compléter ou confirmer sur l'acte lui-même.", { it:true, size:18, after:240 }),
+  ];
+  liste.forEach(i => {
+    const A = etat.analyses[i.numero];
+    const ch = (A.chaine || []).filter(r => r.date || r.nature);
+    enfants.push(p(`Immeuble ${i.numero} — ${communeDe(i)}`, { font:"Georgia", size:24, color:"0F2238", before:280, al:AlignmentType.LEFT }));
+    enfants.push(p("ORIGINE DE PROPRIÉTÉ", { bold:true, al:AlignmentType.LEFT, after:80 }));
+    if(!ch.length){
+      enfants.push(p(A.origine || "[Chaîne non établie : aucun acte relevé dans les pièces lues.]", { color: A.origine ? "1A1A1A" : "A01040" }));
+    } else {
+      ch.forEach((r, k) => {
+        const debut = k === 0 ? "Le BIEN appartient à [PROPRIÉTAIRE ACTUEL] " : "Antérieurement, le BIEN appartenait à [PROPRIÉTAIRE PRÉCÉDENT] ";
+        const acq = /Succession|Attestation|Notoriété|Certificat/.test(r.nature) ? "par suite du décès de [DE CUJUS], survenu le [DATE], ainsi qu'il résulte d'une " + r.nature.toLowerCase()
+          : /Donation/.test(r.nature) ? "pour l'avoir reçu de [DONATEUR] aux termes d'un acte de " + r.nature.toLowerCase()
+          : /Partage|Licitation/.test(r.nature) ? "pour l'avoir recueilli aux termes d'un acte de " + r.nature.toLowerCase()
+          : /Expropriation/.test(r.nature) ? "par suite d'une ordonnance d'expropriation"
+          : /Fusion/.test(r.nature) ? "par suite de la fusion-absorption de [SOCIÉTÉ ABSORBÉE]"
+          : "pour l'avoir acquis de [VENDEUR] aux termes d'un acte de " + r.nature.toLowerCase();
+        const recu = r.notaire ? ` reçu${/ordonnance|jugement/i.test(r.nature) ? "e" : ""} par ${r.notaire}` : " reçu par [NOTAIRE]";
+        const pub = r.publication ? `, publié au service de la publicité foncière (${r.publication})` : ", [publication à établir]";
+        enfants.push(p(`${debut}${acq}${recu}${r.date ? " le " + r.date : " le [DATE]"}${pub}.${/Vente/.test(r.nature) ? " Cette acquisition a eu lieu moyennant un prix de [PRIX], payé comptant et quittancé [ou : dont le paiement est garanti par …]. [Inscription de privilège de vendeur : radiée / périmée / à radier.]" : ""}${/Donation/.test(r.nature) ? " [Article 924-4 : intervention du donateur et de ses héritiers nés et vivants à prévoir.]" : ""}`, { size:19 }));
+      });
+      if(A.alerteTrentenaire) enfants.push(p("[" + A.alerteTrentenaire + "]", { color:"A01040", size:18, it:true }));
+      const purge = ch.find(r => /Expropriation|Adjudication/.test(r.nature));
+      if(purge) enfants.push(p("L'ordonnance d'expropriation susvisée a éteint tous droits réels et personnels existant antérieurement sur le BIEN ; l'origine antérieure n'est relatée que pour mémoire.", { size:19 }));
+      else enfants.push(p("ORIGINE ANTÉRIEURE : [à compléter jusqu'au premier titre translatif de plus de trente ans, le cas échéant].", { size:19, it:true, color:"657D96" }));
+    }
+    if(A.servitudes && A.servitudes.length) enfants.push(p("Servitudes relevées : " + A.servitudes.map(s => s.replace(/\s*\([^)]*\)\s*$/, "")).join(" — "), { size:18, color:"657D96", it:true }));
+  });
+  telecharger(await D.Packer.toBlob(doc([section(enfants)])), `${horodatage()} TRENTE clauses d'origine.docx`);
+}
 
 async function inventaireExcel(sel){
   const NUIT = "FF0F2238", CANARD = "FF33838B", ORANGE = "FFFF982D", CARMIN = "FFA01040", GRIS = "FF657D96";
