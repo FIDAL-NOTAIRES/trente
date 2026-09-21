@@ -2229,7 +2229,9 @@ function sauverControle(){
     Object.entries(etat.controle).forEach(([num, c]) => {
       leger[num] = { cle: c.cle, analyse: c.analyse || null, proposition: c.proposition || null,
         valide: !!c.valide, valideLe: c.valideLe || null, validePar: c.validePar || null, mode: c.mode || null,
-        lectures: (c.lectures || []).map(L => ({ nom: L.nom, type: L.type, pages: L.pages.length, scanne: L.scanne })) };
+        lectures: (c.lectures || []).map(L => L.ocr && Array.isArray(L.pages)
+          ? { nom: L.nom, type: L.type, pages: L.pages, scanne: L.scanne, ocr: true, caracteres: L.caracteres }
+          : { nom: L.nom, type: L.type, pages: Array.isArray(L.pages) ? L.pages.length : L.pages, scanne: L.scanne, caracteres: L.caracteres }) };
     });
     localStorage.setItem(CLE_ANALYSES(), JSON.stringify(leger));
   } catch(e){ noter("Mémorisation des analyses impossible : " + e.message, "analyse"); }
@@ -2324,6 +2326,10 @@ E("btnLireTitres").onclick = async () => {
     const pieces = i.pieces.filter(p => CODES_LUS.includes(p.type) && !p.doublon);
     const lectures = [];
     for(const p of pieces){
+      /* Une reconnaissance déjà faite sur cette pièce (même clé) est conservée :
+         quatre minutes de Tesseract ne se refont pas à chaque relecture. */
+      const deja = (c.lectures || []).find(L => L.nom === p.nom && L.ocr && Array.isArray(L.pages));
+      if(deja && c.cle === cle){ lectures.push(deja); lus++; noter(`${num} : ${p.nom} — texte reconnu conservé (${deja.caracteres || 0} caractères).`, "lecture"); continue; }
       try {
         const pg = p.pagesLues || await pagesDuPDF(p.fileId);
         const sc = estScanne(pg);
@@ -2372,8 +2378,10 @@ async function ocrPDF(fileId, nom, progres){
       if(progres) progres(0, n, doc.numPages);
       const res = await worker.recognize(cv);
       pages.push((res.data.text || "").replace(/[ \t]+\n/g, "\n"));
+      cv.width = cv.height = 0;   /* libère la mémoire de la page rendue */
     }
-  } finally { await worker.terminate(); }
+    if(progres) progres(0, doc.numPages, doc.numPages, true);
+  } finally { try { await worker.terminate(); } catch(e){} }
   return pages;
 }
 async function reconnaitreImmeuble(num){
@@ -2382,23 +2390,38 @@ async function reconnaitreImmeuble(num){
   const scans = (c.lectures || []).filter(L => L.scanne);
   if(!scans.length){ E("etatAnalyse").textContent = `${num} : aucune pièce scannée à reconnaître.`; return; }
   const prog = E("progAnalyse"); prog.hidden = false;
+  /* Après un rechargement de page, les lectures natives ne gardent que leur
+     nombre de pages : on relit ces pièces avant d'analyser l'ensemble. */
+  for(const L of c.lectures){
+    if(Array.isArray(L.pages)) continue;
+    const piece = i.pieces.find(p => p.nom === L.nom); if(!piece) continue;
+    try { prog.textContent = `${num} — relecture de ${L.nom}…`; L.pages = await pagesDuPDF(piece.fileId); const sc = estScanne(L.pages); L.scanne = sc.scanne; L.caracteres = sc.caracteres; }
+    catch(e){ L.pages = []; noter(`${num} : relecture de ${L.nom} impossible — ${e.message}`, "lecture"); }
+  }
   for(const L of scans){
     const piece = i.pieces.find(p => p.nom === L.nom); if(!piece) continue;
     try {
       let pageEnCours = 0, total = 0;
-      const pg = await ocrPDF(piece.fileId, L.nom, (frac, n, tot) => { if(n){ pageEnCours = n; total = tot; }
-        prog.textContent = `${num} — reconnaissance de ${L.nom} : page ${pageEnCours}/${total}${frac ? " (" + Math.round(frac * 100) + " %)" : ""}`; });
+      const pg = await ocrPDF(piece.fileId, L.nom, (frac, n, tot, fin) => { if(n){ pageEnCours = n; total = tot; }
+        prog.textContent = fin ? `${num} — ${L.nom} : reconnaissance achevée, extraction en cours…`
+          : `${num} — reconnaissance de ${L.nom} : page ${pageEnCours}/${total}${frac ? " (" + Math.round(frac * 100) + " %)" : ""}`; });
       const sc = estScanne(pg);
       L.pages = pg; L.ocr = true; L.scanne = sc.scanne; L.caracteres = sc.caracteres;
       noter(`${num} : ${L.nom} reconnu — ${pg.length} page(s), ${sc.caracteres} caractères${sc.scanne ? ", trop peu pour être exploitable" : ""}.`, "ocr");
     } catch(e){ noter(`${num} : reconnaissance de ${L.nom} échouée — ${e.message}.`, "ocr"); }
   }
-  const proposition = analyserImmeuble(num, c.lectures, i.pieces, new Date());
-  proposition.mode = c.lectures.some(L => L.ocr) ? "ocr" : proposition.mode;
-  c.proposition = proposition; c.mode = proposition.mode; c.valide = false;
-  sauverControle(); dessinerAnalyse(); avisRendu();
-  prog.textContent = `${num} : reconnaissance terminée — ${proposition.chaine.length} maillon(s), ${proposition.effetRelatif.length} formalité(s). À contrôler.`;
-  ouvrirControle(num);
+  try {
+    const proposition = analyserImmeuble(num, c.lectures.filter(L => Array.isArray(L.pages)), i.pieces, new Date());
+    proposition.mode = c.lectures.some(L => L.ocr) ? "ocr" : proposition.mode;
+    c.proposition = proposition; c.mode = proposition.mode; c.valide = false;
+    sauverControle(); dessinerAnalyse(); avisRendu();
+    prog.textContent = `${num} : reconnaissance terminée — ${proposition.chaine.length} maillon(s), ${proposition.effetRelatif.length} formalité(s). À contrôler.`;
+    noter(`${num} : proposition après reconnaissance — ${proposition.chaine.length} maillon(s), ${proposition.effetRelatif.length} formalité(s), mode ${proposition.mode}.`, "ocr");
+    ouvrirControle(num);
+  } catch(e){
+    prog.textContent = `${num} : reconnaissance faite mais l'analyse a échoué — voir le journal.`;
+    noter(`${num} : erreur après reconnaissance — ${e.message}`, "ocr");
+  }
 }
 
 /* ---------- LECTURE PAR CLAUDE — passe API (/api/lire) ----------
@@ -2438,8 +2461,9 @@ async function lireParClaude(num){
     noter(`${num} : proposition API — ${c.proposition.chaine.length} maillon(s), ${c.proposition.vigilance.filter(v => v.etat === "carmin").length} carmin.`, "api");
     ouvrirControle(num);
   } catch(e){
-    prog.textContent = `${num} : lecture par Claude échouée — ${e.message}`;
-    noter(`${num} : passe API en échec — ${e.message}. Vérifier ANTHROPIC_API_KEY dans Vercel et vercel.json.`, "api");
+    const reseau = /Failed to fetch|NetworkError|Load failed/i.test(e.message);
+    prog.textContent = `${num} : lecture par Claude échouée — ${reseau ? "la requête n'a pas atteint le serveur (bloqueur de contenu, extension ou réseau)" : e.message}`;
+    noter(`${num} : passe API en échec — ${e.message}. ${reseau ? "La requête n'est pas partie du navigateur : désactiver les bloqueurs sur trente.vercel.app, ou essayer en fenêtre de navigation privée sans extension." : "Vérifier ANTHROPIC_API_KEY dans Vercel et vercel.json."}`, "api");
   }
 }
 
