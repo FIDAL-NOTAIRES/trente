@@ -236,39 +236,8 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
   </section>
 
   <!-- 4 ------------------------------------------------------------------ -->
-  <section class="etape" id="e4" data-inactif="1">
-    <div class="enTete"><span class="rang">4</span><h2>Modèle de rendu</h2>
-      <div class="aide">Le manifeste est le point de passage vers l'analyse</div></div>
-    <div class="contenu">
-      <div class="modeles" id="modeles"></div>
-      <div class="ligneControles">
-        <button id="btnRendre">Produire le rendu</button>
-        <button class="sec" id="btnChoisir">Choisir les fiches à éditer</button>
-        <button class="sec" id="btnManifeste">Exporter le manifeste (JSON)</button>
-        <span id="etatRendu" style="font-size:13.5px;color:var(--grisbleu)"></span>
-      </div>
-      <div id="panneauFiches" hidden style="margin-top:16px;border:1px solid var(--filet);padding:14px;background:var(--papier)">
-        <div class="filtres" style="margin-bottom:10px">
-          <button class="sec" id="btnFichesTout">Tout sélectionner</button>
-          <button class="sec" id="btnFichesRien">Tout désélectionner</button>
-          <span class="puces" id="compteFiches"></span>
-        </div>
-        <div id="communes" style="max-height:40vh;overflow:auto"></div>
-        <div class="ligneControles" style="margin-top:14px">
-          <button class="sec" id="btnAnalyses">Importer les analyses (JSON)</button>
-          <input type="file" id="ficAnalyses" accept=".json,application/json" hidden>
-          <button class="sec" id="btnPlans">Déposer les plans (images)</button>
-          <input type="file" id="ficPlans" accept="image/*" multiple hidden>
-          <button id="btnEditerFiches">Valider et produire le document</button>
-          <span id="etatFiches" style="font-size:13.5px;color:var(--grisbleu)"></span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 5 ------------------------------------------------------------------ -->
   <section class="etape" id="e5" data-inactif="1">
-    <div class="enTete"><span class="rang">5</span><h2>Références et plans</h2>
+    <div class="enTete"><span class="rang">4</span><h2>Références et plans</h2>
       <div class="aide">Le contrôle conditionne l'édition de la fiche</div></div>
     <div class="contenu">
       <div class="avis" id="avisRef">
@@ -302,10 +271,10 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
     </div>
   </section>
 
-  <!-- 6 ------------------------------------------------------------------ -->
+  <!-- 5 ------------------------------------------------------------------ -->
   <section class="etape" id="e6" data-inactif="1">
-    <div class="enTete"><span class="rang">6</span><h2>Analyse des titres et états hypothécaires</h2>
-      <div class="aide">Extraction déterministe, sans appel de modèle. Toute énonciation cite sa pièce et sa page.</div></div>
+    <div class="enTete"><span class="rang">5</span><h2>Analyse des titres et états hypothécaires</h2>
+      <div class="aide">Extraction déterministe, sans appel de modèle. La validation immeuble par immeuble est le visa qui ouvre les rendus.</div></div>
     <div class="contenu">
       <div class="avis" id="avisAnalyse">
         TRENTE lit le texte des pièces OP, OPA et EHF et en tire une <strong>proposition</strong> : formalités,
@@ -335,6 +304,38 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
         </table>
       </div>
       <div id="panneauControle" hidden></div>
+    </div>
+  </section>
+
+  <!-- 6 ------------------------------------------------------------------ -->
+  <section class="etape" id="e4" data-inactif="1">
+    <div class="enTete"><span class="rang">6</span><h2>Rendus</h2>
+      <div class="aide">Fiches, note de risques et clauses exigent une analyse validée à l'étape 5</div></div>
+    <div class="contenu">
+      <div class="avis" id="avisRendu" hidden></div>
+      <div class="modeles" id="modeles"></div>
+      <div class="ligneControles">
+        <button id="btnRendre">Produire le rendu</button>
+        <button class="sec" id="btnChoisir">Choisir les fiches à éditer</button>
+        <button class="sec" id="btnManifeste">Exporter le manifeste (JSON)</button>
+        <span id="etatRendu" style="font-size:13.5px;color:var(--grisbleu)"></span>
+      </div>
+      <div id="panneauFiches" hidden style="margin-top:16px;border:1px solid var(--filet);padding:14px;background:var(--papier)">
+        <div class="filtres" style="margin-bottom:10px">
+          <button class="sec" id="btnFichesTout">Tout sélectionner</button>
+          <button class="sec" id="btnFichesRien">Tout désélectionner</button>
+          <span class="puces" id="compteFiches"></span>
+        </div>
+        <div id="communes" style="max-height:40vh;overflow:auto"></div>
+        <div class="ligneControles" style="margin-top:14px">
+          <button class="sec" id="btnAnalyses">Importer les analyses (JSON)</button>
+          <input type="file" id="ficAnalyses" accept=".json,application/json" hidden>
+          <button class="sec" id="btnPlans">Déposer les plans (images)</button>
+          <input type="file" id="ficPlans" accept="image/*" multiple hidden>
+          <button id="btnEditerFiches">Valider et produire le document</button>
+          <span id="etatFiches" style="font-size:13.5px;color:var(--grisbleu)"></span>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -404,7 +405,7 @@ const REPLI = [
 
 const MODELES = [
   {id:"inventaire", t:"Inventaire du portefeuille", d:"Un onglet par immeuble et un onglet par pièce, à la charte.", pret:true},
-  {id:"fiche",   t:"Fiches par immeuble",  d:"Désignation, chaîne, vigilances, plans. Passe par « Choisir les fiches à éditer ». Page de garde en tête.", pret:true},
+  {id:"fiche",   t:"Fiches par immeuble",  d:"Désignation, chaîne, vigilances, plans. Immeubles visés seulement. Page de garde en tête.", pret:true},
   {id:"risques", t:"Note de risques consolidée", d:"Les vigilances carmin puis orange des analyses validées, triées par gravité puis par immeuble.", pret:true},
   {id:"clauses", t:"Clauses d'origine de propriété", d:"Un projet de clause par immeuble analysé, à reprendre dans l'acte.", pret:true}
 ];
@@ -889,7 +890,7 @@ E("btnScan").onclick = async () => {
     const nom = await nomDossier(id);
     etat.racineNom = nom || null;
     if(nom){ memoriserDossier(nom, id); noter(`Dossier « ${nom} » mémorisé dans la liste.`,"dossiers"); }
-    etat.analyses = {}; chargerControle(); dessinerAnalyse();
+    etat.analyses = {}; chargerControle(); dessinerAnalyse(); avisRendu();
   }catch(e){
     progresser("La lecture a échoué. Le journal indique la cause.");
     noter("Échec : "+e.message,"scan");
@@ -948,6 +949,7 @@ function dessiner(){
   synthese();
   if(E("corpsRef")) dessinerRef();
   if(E("corpsAnalyse")) dessinerAnalyse();
+  avisRendu();
 }
 function echapper(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
 function synthese(){
@@ -1208,6 +1210,18 @@ E("modeles").innerHTML = MODELES.map(m => `
 document.querySelectorAll('input[name=modele]').forEach(r => r.onchange = () => etat.modele = r.value);
 
 function retenus(){ return etat.immeubles.filter(i => i.selection); }
+/* Visa : une analyse validée à l'étape 5. Sans visa, ni fiche, ni note, ni clause. */
+const vise = (i) => !!(etat.analyses[i.numero] && etat.analyses[i.numero].validation);
+function avisRendu(){
+  const a = E("avisRendu"); if(!a) return;
+  const sel = retenus(), sans = sel.filter(i => !vise(i));
+  if(!sel.length){ a.hidden = true; return; }
+  a.hidden = false;
+  a.className = "avis" + (sans.length ? " dur" : "");
+  a.innerHTML = sans.length
+    ? `<strong>${sans.length} immeuble(s) retenu(s) sans visa</strong> — titres et état hypothécaire non validés à l'étape 5 : ${echapper(sans.slice(0, 12).map(i => i.numero || "?").join(", "))}${sans.length > 12 ? "…" : ""}. Les fiches, la note de risques et les clauses ne s'éditent que pour les immeubles visés ; l'inventaire et le manifeste restent disponibles.`
+    : `<strong>${sel.length} immeuble(s) retenu(s), tous visés.</strong> Les quatre rendus sont disponibles.`;
+}
 function telecharger(blob, nom){
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom;
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -1244,17 +1258,18 @@ E("btnRendre").onclick = async () => {
   const sel = retenus();
   if(!sel.length){ E("etatRendu").textContent = "Retiens au moins un immeuble."; return; }
   if(etat.modele === "fiche"){
+    if(!sel.some(vise)){ E("etatRendu").textContent = "Aucun immeuble retenu n'est visé : lisez et validez les titres à l'étape 5 avant d'éditer une fiche."; return; }
     E("panneauFiches").hidden = false;
-    if(etat.immeubles.every(i => i.fiche === undefined)) etat.immeubles.forEach(i => { i.fiche = i.selection; });
+    etat.immeubles.forEach(i => { i.fiche = i.selection && vise(i); });
     dessinerCommunes(); E("panneauFiches").scrollIntoView({ behavior:"smooth" });
-    E("etatRendu").textContent = "Choisissez les fiches puis « Valider et produire le document »."; return;
+    E("etatRendu").textContent = "Seuls les immeubles visés sont proposés. Choisissez puis « Valider et produire le document »."; return;
   }
   if(etat.modele === "risques" || etat.modele === "clauses"){
-    const avec = sel.filter(i => etat.analyses[i.numero]);
-    if(!avec.length){ E("etatRendu").textContent = "Aucune analyse validée : lisez et validez les titres à l'étape 6."; return; }
+    const avec = sel.filter(vise);
+    if(!avec.length){ E("etatRendu").textContent = "Aucun immeuble retenu n'est visé : lisez et validez les titres à l'étape 5."; return; }
     E("btnRendre").disabled = true; E("etatRendu").textContent = "Construction du document…";
     try { await (etat.modele === "risques" ? noteRisques(avec) : clausesOrigine(avec));
-      E("etatRendu").textContent = `Document produit pour ${avec.length} immeuble(s) analysé(s)${avec.length < sel.length ? ` (${sel.length - avec.length} sans analyse, ignoré(s))` : ""}.`; }
+      E("etatRendu").textContent = `Document produit pour ${avec.length} immeuble(s) analysé(s)${avec.length < sel.length ? ` (${sel.length - avec.length} sans visa, ignoré(s))` : ""}.`; }
     catch(e){ E("etatRendu").textContent = "Échec de la construction."; noter("Word : " + e.message, "export"); }
     E("btnRendre").disabled = false; return;
   }
@@ -1306,9 +1321,10 @@ function dessinerCommunes(){
       <div style="display:flex;flex-wrap:wrap;gap:4px 14px">
         ${l.map(i => {
           const k = etat.immeubles.indexOf(i);
-          return `<label style="font-size:13px;display:flex;gap:5px;align-items:center;cursor:pointer">
-            <input type="checkbox" data-f="${k}" ${i.fiche ? "checked" : ""}>
-            <span class="num" style="font-family:Georgia,serif">${i.numero || "—"}</span></label>`;
+          const v = vise(i);
+          return `<label style="font-size:13px;display:flex;gap:5px;align-items:center;cursor:${v ? "pointer" : "not-allowed"};opacity:${v ? 1 : .45}" title="${v ? "analyse validée" : "sans visa : titres et état hypothécaire non validés à l'étape 5"}">
+            <input type="checkbox" data-f="${k}" ${i.fiche && v ? "checked" : ""} ${v ? "" : "disabled"}>
+            <span class="num" style="font-family:Georgia,serif">${i.numero || "—"}</span>${v ? "" : '<span class="puces">sans visa</span>'}</label>`;
         }).join("")}
       </div>
     </div>`).join("") || '<span class="puces">Aucun immeuble lu.</span>';
@@ -1318,7 +1334,7 @@ function dessinerCommunes(){
   });
   E("communes").querySelectorAll("button[data-com]").forEach(b => {
     b.onclick = () => {
-      etat.immeubles.forEach(i => { if(communeDe(i) === b.dataset.com) i.fiche = true; });
+      etat.immeubles.forEach(i => { if(communeDe(i) === b.dataset.com) i.fiche = vise(i); });
       dessinerCommunes();
     };
   });
@@ -1330,14 +1346,11 @@ function compterFiches(){
 }
 E("btnChoisir").onclick = () => {
   const p = E("panneauFiches");
+  if(p.hidden && !retenus().some(vise)){ E("etatRendu").textContent = "Aucun immeuble retenu n'est visé : lisez et validez les titres à l'étape 5 avant d'éditer une fiche."; return; }
   p.hidden = !p.hidden;
-  if(!p.hidden){
-    if(etat.immeubles.every(i => i.fiche === undefined))
-      etat.immeubles.forEach(i => { i.fiche = i.selection; });
-    dessinerCommunes();
-  }
+  if(!p.hidden){ etat.immeubles.forEach(i => { i.fiche = i.selection && vise(i); }); dessinerCommunes(); }
 };
-E("btnFichesTout").onclick = () => { etat.immeubles.forEach(i => i.fiche = true); dessinerCommunes(); };
+E("btnFichesTout").onclick = () => { etat.immeubles.forEach(i => i.fiche = vise(i)); dessinerCommunes(); };
 E("btnFichesRien").onclick = () => { etat.immeubles.forEach(i => i.fiche = false); dessinerCommunes(); };
 
 /* =====================================================================
@@ -1659,7 +1672,7 @@ function sectionsFiches(D, liste){
 /* Mention de méthode (addendum 29/08) : le mode de traitement de chaque
    immeuble est tracé dans la fiche, en tête de la section 4. */
 function methodeDe(A, i){
-  if(!A || !A.mode) return "Méthode : aucune analyse des titres n'a été validée pour cet immeuble ; la section 4.1 attend l'analyse.";
+  if(!A || !A.mode) return "Méthode : aucune analyse des titres n'a été validée pour cet immeuble (sans visa) ; la section 4.1 attend l'analyse.";
   const lib = { automatique:"extraction déterministe du texte des pièces", mixte:"extraction déterministe, une ou plusieurs pièces scannées sans couche texte traitées à la main",
     manuel:"saisie manuelle (pièces scannées sans couche texte ou absentes)", "sans pièce":"aucune pièce OP, OPA ou EHF au dossier" }[A.mode] || A.mode;
   const pieces = (A.piecesLues || []).map(x => x.nom + (x.scanne ? " (scanné)" : "")).join(", ");
@@ -1698,8 +1711,8 @@ async function editerFiches(){
   const D = window.docx;
   if(!D){ E("etatFiches").textContent = "La bibliothèque Word n'a pas chargé. Recharge la page."; 
           noter("window.docx absent du contexte.","fiches"); return; }
-  const liste = immeublesTries().filter(i => i.fiche);
-  if(!liste.length){ E("etatFiches").textContent = "Retiens au moins une fiche."; return; }
+  const liste = immeublesTries().filter(i => i.fiche && vise(i));
+  if(!liste.length){ E("etatFiches").textContent = "Aucune fiche visée à éditer : validez les titres à l'étape 5."; return; }
   E("btnEditerFiches").disabled = true;
   E("etatFiches").textContent = "Récupération des vues aériennes…";
   await rapporterOrthos(liste);
@@ -2325,7 +2338,7 @@ E("btnLireTitres").onclick = async () => {
   }
   sauverControle();
   prog.textContent = `${lus} pièce(s) lue(s)${scans ? `, ${scans} scannée(s) hors flux` : ""}${retypes ? `, ${retypes} retypée(s) par le contenu` : ""}${sautes ? `, ${sautes} immeuble(s) déjà validé(s)` : ""}.`;
-  E("etatAnalyse").textContent = "Contrôlez puis validez chaque immeuble.";
+  E("etatAnalyse").textContent = "Contrôlez puis validez chaque immeuble : la validation est le visa qui ouvre les rendus de l'étape 6.";
   dessiner(); dessinerAnalyse();
   E("btnLireTitres").disabled = false;
 };
@@ -2471,7 +2484,7 @@ function ouvrirControle(num){
     };
     c.analyse = analyse; c.valide = true; c.valideLe = analyse.validation.le; c.validePar = op || null; c.piecesModifiees = false;
     etat.analyses[num] = analyse;
-    sauverControle(); dessinerAnalyse();
+    sauverControle(); dessinerAnalyse(); avisRendu();
     noter(`${num} : analyse validée${op ? " par " + op : ""} (mode ${c.mode}).`, "analyse");
     if(suivant){
       const reste = retenus().map(x => x.numero || x.folderId).filter(k => etat.controle[k] && !etat.controle[k].valide);
@@ -2493,7 +2506,7 @@ E("btnExportAnalyses").onclick = () => {
 E("btnOublierAnalyses").onclick = () => {
   if(!confirm("Effacer les analyses mémorisées sur ce poste pour ce portefeuille ? Exportez-les d'abord si besoin.")) return;
   try { localStorage.removeItem(CLE_ANALYSES()); } catch(e){}
-  etat.controle = {}; etat.analyses = {}; dessinerAnalyse(); E("panneauControle").hidden = true;
+  etat.controle = {}; etat.analyses = {}; dessinerAnalyse(); avisRendu(); E("panneauControle").hidden = true;
   noter("Analyses mémorisées effacées pour ce portefeuille.", "analyse");
 };
 
