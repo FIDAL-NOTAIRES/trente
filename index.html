@@ -1895,6 +1895,29 @@ function extrairePublications(pages, nomPiece){
 }
 const formaliteTexte = (f) => `${f.bureau ? f.bureau + ", " : ""}${f.date ? dateFR(f.date) + ", " : ""}vol. ${f.volume} n° ${f.numero}`;
 
+
+/* ---------- ÉTAT-RÉPONSE ANF — structure du document ----------
+   L'état-réponse « Accès des Notaires au Fichier Immobilier » est hybride :
+   le flux (registre des dépôts, relevé des formalités) est du texte, le stock
+   (copies de fiches) est en images. Quand le flux dit « 0 formalité », il ne
+   reste RIEN à extraire : la substance est dans les fiches, à lire à la main.
+   L'outil doit le dire explicitement plutôt que rendre une proposition vide. */
+function extraireEtatReponse(pages){
+  const t = pages.join("\n");
+  if(!/[ÉE]TAT-R[ÉE]PONSE|Fichier\s+Immobilier|ANF_\d{4}_\d+/i.test(t)) return null;
+  const g = (re) => { const m = t.match(re); return m ? m[1].trim() : null; };
+  const bureau = g(/Fichier\s+Immobilier\s+([A-ZÉÈ][A-ZÉÈ' \-]+?\s*\d?)\s*\n/) || g(/\(([A-ZÉÈ][A-ZÉÈ' \-]+\d?)\)/);
+  const delivre = g(/d[ée]livr[ée]e?\s+le\s+(\d{1,2}\s+\w+\s+\d{4}|\d{2}\/\d{2}\/\d{4})/i);
+  const dossier = g(/(ANF_\d{4}_\d+)/);
+  const nbForm = (() => { const ms = [...t.matchAll(/(\d+)\s+formalit[ée]s?\s+d[ée]livr[ée]es?/gi)]; return ms.length ? ms.map(m => Number(m[1])) : null; })();
+  const faces = g(/(\d+)\s+faces?\s+de\s+copies?\s+de\s+fiches?/i);
+  const parcelles = [...new Set((t.match(/\b[A-Z]{1,2}\s\d{1,4}\b/g) || []).filter(x => !/^(ANF|HF|R|V)\s/.test(x)))];
+  const fiches = [...new Set((t.match(/\b\d{4}P\d{2}\s+\d{15}\s+[RV]\b/g) || []).map(x => x.replace(/\s+[RV]$/, "")))];
+  const dEl = delivre ? lireDate(delivre) : null;
+  return { bureau, delivre: dEl ? dEl.iso : null, dossier, formalitesFlux: nbForm ? nbForm.reduce((a, b) => a + b, 0) : null,
+    faces: faces ? Number(faces) : 0, parcelles, fiches };
+}
+
 /* ---------- RÉFÉRENCES D'ACTES ---------- */
 /* « acte reçu par Maître Jean DUPONT, notaire à LILLE, le 5 décembre 1983 »
    « suivant acte passé devant Me DUPONT notaire à Lille en date du 5/12/1983 »
@@ -2115,6 +2138,15 @@ function analyserImmeuble(numero, lectures, pieces, aujourdhui){
   });
   const chaine = construireChaine(actes, publications);
   const vig = extraireVigilances(utiles);
+  /* État-réponse ANF : ce qu'il contient et ce qu'il ne contient PAS en texte. */
+  const etatsReponse = utiles.filter(L => L.type === "EHF").map(L => ({ ...extraireEtatReponse(L.pages), nom: L.nom })).filter(e => e && (e.dossier || e.bureau));
+  etatsReponse.forEach(e => {
+    const v = vig.find(x => x.id === "privilege");
+    if(v && e.faces && !v.extraits.length){
+      v.conclusion = `L'état-réponse ${e.dossier || ""} (${e.bureau || "bureau non lu"}${e.delivre ? ", délivré le " + dateFR(e.delivre) : ""}) rend ${e.formalitesFlux ?? "?"} formalité(s) au flux et ${e.faces} face(s) de copies de fiches EN IMAGE : les inscriptions (privilège de vendeur, hypothèques) ne s'y lisent qu'à la main. À vérifier sur les fiches.`;
+      v.sources = `${e.nom} (copies de fiches)`;
+    }
+  });
   const servitudes = extraireServitudes(utiles);
   const alerte = utiles.length ? alerteTrentenaire(chaine, aujourdhui) : null;
   const manquants = actesManquants(chaine, pieces, utiles);
@@ -2128,9 +2160,13 @@ function analyserImmeuble(numero, lectures, pieces, aujourdhui){
 
   const effetRelatif = publications.map(f => ({
     parcelle: "", formalite: formaliteTexte(f), nature: f.nature + (f.source ? ` (${f.source} p. ${f.page})` : "") }));
+  etatsReponse.forEach(e => effetRelatif.push({
+    parcelle: e.parcelles.join(" "), formalite: `État-réponse ${e.dossier || ""} ${e.bureau || ""}${e.delivre ? " du " + dateFR(e.delivre) : ""}`.replace(/\s+/g, " ").trim(),
+    nature: `${e.formalitesFlux ?? "?"} formalité(s) au flux · ${e.faces} face(s) de fiches en image${e.fiches.length ? " (" + e.fiches.join(", ") + ")" : ""} — effet relatif à relever sur les fiches (${e.nom})` }));
 
   const aDemander = [];
   manquants.forEach(r => aDemander.push(`Copie de l'acte du ${dateFR(r.date)} (${r.nature}${r.notaire ? ", " + r.notaire : ""})${r.publication ? ", publié au " + r.publication : ", référence de publication à établir"} — cité par ${r.source}, non produit au dossier.`));
+  etatsReponse.filter(e => e.faces).forEach(e => aDemander.push(`${e.nom} : ${e.faces} face(s) de copies de fiches en image — lecture manuelle des fiches requise (vente, prix, inscriptions) ; aucune formalité au flux depuis l'informatisation.`));
   lectures.filter(L => L.scanne).forEach(L => aDemander.push(`Pièce ${L.nom} : PDF scanné sans couche texte, lecture automatique impossible — saisie manuelle ou copie numérique à requérir.`));
 
   return {
@@ -2146,7 +2182,8 @@ function analyserImmeuble(numero, lectures, pieces, aujourdhui){
     vigilance: vig.map(v => ({ etat: v.etat, verification: v.verification, conclusion: v.conclusion, sources: v.sources })),
     aDemander,
     actesManquants: manquants.map(r => ({ ...r, date: dateFR(r.date) })),
-    extraits: { publications, actes, designation: desig, vigilances: vig.filter(v => v.extraits.length).map(v => ({ id: v.id, verification: v.verification, extraits: v.extraits })) },
+    etatsReponse,
+    extraits: { publications, actes, designation: desig, etatsReponse, vigilances: vig.filter(v => v.extraits.length).map(v => ({ id: v.id, verification: v.verification, extraits: v.extraits })) },
   };
 }
 
@@ -2344,6 +2381,7 @@ function ouvrirControle(num){
   if(X.actes.length){ srcs.push("<h4>Actes cités</h4>"); X.actes.forEach(a => srcs.push(`<div class="src"><span class="ou">${echapper(a.source)} p. ${a.page}</span> — ${dateFR(a.date)} · ${echapper(a.nature)} · ${echapper(a.notaire)}${a.lieu ? ", " + echapper(a.lieu) : ""}<br>${echapper(a.extrait)}</div>`)); }
   if(X.designation.length){ srcs.push("<h4>Désignation au titre</h4>"); X.designation.forEach(d => srcs.push(`<div class="src"><span class="ou">${echapper(d.source)} p. ${d.page}</span> — ${echapper(d.parcelle)} · ${d.contenance}<br>${echapper(d.extrait)}</div>`)); }
   if(X.vigilances.length){ srcs.push("<h4>Mentions de vigilance</h4>"); X.vigilances.forEach(v => v.extraits.forEach(e => srcs.push(`<div class="src ${/donation|inali|tontine|rém|collect|charges|capacit|soulte/i.test(v.verification) ? "carmin" : "orange"}"><span class="ou">${echapper(e.source)} p. ${e.page}</span> — ${echapper(v.verification)}<br>${echapper(e.extrait)}</div>`))); }
+  (X.etatsReponse || []).forEach(e => srcs.push(`<div class="src orange"><span class="ou">${echapper(e.nom)}</span> — état-réponse ANF ${echapper(e.dossier || "")} ${echapper(e.bureau || "")}${e.delivre ? ", délivré le " + dateFR(e.delivre) : ""} : <b>${e.formalitesFlux ?? "?"} formalité(s)</b> au flux, <b>${e.faces} face(s) de copies de fiches en image</b>${e.parcelles.length ? " · parcelles visées : " + echapper(e.parcelles.join(" ")) : ""}${e.fiches.length ? " · fiches " + echapper(e.fiches.join(", ")) : ""}. Les fiches ne se lisent qu'à la main.</div>`));
   if(!srcs.length) srcs.push(`<div class="src">${manuel ? "Saisie manuelle : aucune pièce lue automatiquement." : "Aucune mention relevée dans les pièces lues."}</div>`);
   (c.lectures || []).filter(L => L.scanne).forEach(L => srcs.push(`<div class="src carmin"><span class="ou">${echapper(L.nom)}</span> — PDF scanné sans couche texte (${L.caracteres || 0} caractères sur ${L.pages.length || L.pages} pages) : hors flux automatique, à saisir à la main ou à requérir en copie numérique.</div>`));
 
@@ -2356,8 +2394,10 @@ function ouvrirControle(num){
       <span style="margin-left:auto"></span>
       <label class="champ" for="operateur" style="margin:0">Validé par</label>
       <input type="text" id="operateur" value="${echapper(operateur)}" placeholder="initiales" style="max-width:120px;padding:6px 8px">
+      <button class="sec" id="btnTexteLu" ${(c.lectures || []).some(L => Array.isArray(L.pages)) ? "" : "disabled"} title="Le texte brut rendu par pdf.js, page par page — pour comprendre ce que l'extracteur a vu">Voir le texte lu</button>
       <button class="sec" id="btnFermerControle">Fermer</button>
     </div>
+    <pre id="texteLu" hidden style="max-height:40vh;overflow:auto;border:1px solid var(--filet);background:var(--blanc);padding:12px;font-size:11.5px;line-height:1.5;white-space:pre-wrap;margin:12px 0 0"></pre>
     <div class="controle">
       <div class="colonne">
         <h3>Extraits des pièces</h3>
@@ -2400,6 +2440,12 @@ function ouvrirControle(num){
   pan.scrollIntoView({ behavior: "smooth", block: "start" });
 
   E("btnFermerControle").onclick = () => { pan.hidden = true; };
+  E("btnTexteLu").onclick = () => {
+    const pre = E("texteLu"); pre.hidden = !pre.hidden;
+    if(!pre.hidden && !pre.textContent) pre.textContent = (c.lectures || []).filter(L => Array.isArray(L.pages)).map(L =>
+      `══════ ${L.nom} — ${L.pages.length} page(s)${L.scanne ? " — SANS COUCHE TEXTE" : ""} ══════\n` +
+      L.pages.map((p, k) => `── page ${k + 1} ──\n${p}`).join("\n")).join("\n\n") || "Aucun texte.";
+  };
   E("btnReinit").onclick = () => { c.valide = false; ouvrirControle(num); };
   const valider = (suivant) => {
     const lignes = (id) => E(id).value.split("\n").map(x => x.trim()).filter(Boolean);
