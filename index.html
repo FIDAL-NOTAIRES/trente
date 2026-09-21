@@ -279,7 +279,7 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
       <div class="avis" id="avisAnalyse">
         TRENTE lit le texte des pièces OP, OPA et EHF et en tire une <strong>proposition</strong> : formalités,
         actes, chaîne, vigilances, servitudes. Rien n'entre dans la fiche sans votre validation, immeuble par immeuble.
-        Une pièce scannée sans couche texte sort du flux automatique et se saisit à la main.
+        Une pièce scannée sans couche texte sort du flux automatique : <strong>Reconnaître</strong> (gratuit, dans le navigateur) d'abord, <strong>Claude</strong> (passe API, facturée) pour ce qui résiste, saisie manuelle toujours possible.
       </div>
       <div class="ligneControles" style="margin-bottom:14px">
         <button id="btnLireTitres">Lire les titres et états</button>
@@ -355,6 +355,7 @@ footer{max-width:1180px; margin:0 auto; padding:8px 24px 40px; font-size:11.5px;
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 /* =====================================================================
    TRENTE — couche inventaire
@@ -1674,7 +1675,9 @@ function sectionsFiches(D, liste){
 function methodeDe(A, i){
   if(!A || !A.mode) return "Méthode : aucune analyse des titres n'a été validée pour cet immeuble (sans visa) ; la section 4.1 attend l'analyse.";
   const lib = { automatique:"extraction déterministe du texte des pièces", mixte:"extraction déterministe, une ou plusieurs pièces scannées sans couche texte traitées à la main",
-    manuel:"saisie manuelle (pièces scannées sans couche texte ou absentes)", "sans pièce":"aucune pièce OP, OPA ou EHF au dossier" }[A.mode] || A.mode;
+    manuel:"saisie manuelle (pièces scannées sans couche texte ou absentes)", "sans pièce":"aucune pièce OP, OPA ou EHF au dossier",
+    ocr:"reconnaissance de caractères dans le navigateur puis extraction déterministe (pièces scannées)",
+    api:"lecture des pièces scannées par le modèle Claude (passe API), proposition contrôlée et corrigée avant validation" }[A.mode] || A.mode;
   const pieces = (A.piecesLues || []).map(x => x.nom + (x.scanne ? " (scanné)" : "")).join(", ");
   const v = A.validation || {};
   return `Méthode : ${lib}${pieces ? " — pièces lues : " + pieces : ""}. ${v.le ? "Validé le " + new Date(v.le).toLocaleDateString("fr-FR") + (v.par ? " par " + v.par : "") + "." : "Proposition non validée."} Toute énonciation cite sa pièce et sa page ; ce qui n'a pas été relevé reste « à vérifier ».`;
@@ -2343,7 +2346,103 @@ E("btnLireTitres").onclick = async () => {
   E("btnLireTitres").disabled = false;
 };
 
-const LIB_MODE = { automatique:"automatique", mixte:"mixte", manuel:"manuel", "sans pièce":"sans pièce" };
+const LIB_MODE = { automatique:"automatique", mixte:"mixte", manuel:"manuel", "sans pièce":"sans pièce", ocr:"reconnaissance", api:"lecture Claude" };
+const classeMode = (m) => m === "automatique" || m === "ocr" ? "auto" : m === "api" ? "valide" : m === "mixte" ? "mixte" : "manuel";
+
+/* ---------- RECONNAISSANCE GRATUITE — Tesseract dans le navigateur ----------
+   Première voie pour un scan (décision : gratuit d'abord, API ensuite). Chaque
+   page est rendue en image par pdf.js puis reconnue en français. Lent — de
+   l'ordre de cinq à dix secondes par page — mais sans rien de payant. Sur des
+   fiches manuscrites, le résultat sera pauvre : c'est attendu, et c'est pour
+   cela que la passe API existe. */
+async function ocrPDF(fileId, nom, progres){
+  if(!window.Tesseract) throw new Error("Tesseract n'a pas chargé");
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
+    { headers: { Authorization: "Bearer " + etat.token } });
+  if(!r.ok) throw new Error("téléchargement Drive " + r.status);
+  const doc = await window.pdfjsLib.getDocument({ data: await r.arrayBuffer() }).promise;
+  const worker = await Tesseract.createWorker("fra", 1, { logger: m => { if(m.status === "recognizing text" && progres) progres(m.progress); } });
+  const pages = [];
+  try {
+    for(let n = 1; n <= doc.numPages; n++){
+      const page = await doc.getPage(n);
+      const vp = page.getViewport({ scale: 2 });
+      const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+      if(progres) progres(0, n, doc.numPages);
+      const res = await worker.recognize(cv);
+      pages.push((res.data.text || "").replace(/[ \t]+\n/g, "\n"));
+    }
+  } finally { await worker.terminate(); }
+  return pages;
+}
+async function reconnaitreImmeuble(num){
+  const i = etat.immeubles.find(x => (x.numero || x.folderId) === num); const c = etat.controle[num];
+  if(!i || !c) return;
+  const scans = (c.lectures || []).filter(L => L.scanne);
+  if(!scans.length){ E("etatAnalyse").textContent = `${num} : aucune pièce scannée à reconnaître.`; return; }
+  const prog = E("progAnalyse"); prog.hidden = false;
+  for(const L of scans){
+    const piece = i.pieces.find(p => p.nom === L.nom); if(!piece) continue;
+    try {
+      let pageEnCours = 0, total = 0;
+      const pg = await ocrPDF(piece.fileId, L.nom, (frac, n, tot) => { if(n){ pageEnCours = n; total = tot; }
+        prog.textContent = `${num} — reconnaissance de ${L.nom} : page ${pageEnCours}/${total}${frac ? " (" + Math.round(frac * 100) + " %)" : ""}`; });
+      const sc = estScanne(pg);
+      L.pages = pg; L.ocr = true; L.scanne = sc.scanne; L.caracteres = sc.caracteres;
+      noter(`${num} : ${L.nom} reconnu — ${pg.length} page(s), ${sc.caracteres} caractères${sc.scanne ? ", trop peu pour être exploitable" : ""}.`, "ocr");
+    } catch(e){ noter(`${num} : reconnaissance de ${L.nom} échouée — ${e.message}.`, "ocr"); }
+  }
+  const proposition = analyserImmeuble(num, c.lectures, i.pieces, new Date());
+  proposition.mode = c.lectures.some(L => L.ocr) ? "ocr" : proposition.mode;
+  c.proposition = proposition; c.mode = proposition.mode; c.valide = false;
+  sauverControle(); dessinerAnalyse(); avisRendu();
+  prog.textContent = `${num} : reconnaissance terminée — ${proposition.chaine.length} maillon(s), ${proposition.effetRelatif.length} formalité(s). À contrôler.`;
+  ouvrirControle(num);
+}
+
+/* ---------- LECTURE PAR CLAUDE — passe API (/api/lire) ----------
+   Seconde voie, pour ce qui résiste à la reconnaissance gratuite : fiches
+   manuscrites, scans médiocres. La fonction serveur télécharge les pièces du
+   Drive avec le jeton de session et renvoie une PROPOSITION ; elle passe par
+   l'écran de contrôle comme les autres, jamais directement dans le contrat. */
+async function lireParClaude(num){
+  const i = etat.immeubles.find(x => (x.numero || x.folderId) === num); if(!i) return;
+  const pieces = i.pieces.filter(p => CODES_LUS.includes(p.type) && !p.doublon).map(p => ({ fileId: p.fileId, nom: p.nom, type: p.type }));
+  if(!pieces.length){ E("etatAnalyse").textContent = `${num} : aucune pièce OP, OPA ou EHF à transmettre.`; return; }
+  if(!confirm(`Lecture par Claude de ${pieces.length} pièce(s) de l'immeuble ${num} (${pieces.map(p => p.nom).join(", ")}). Cette passe est facturée à l'usage. Continuer ?`)) return;
+  const prog = E("progAnalyse"); prog.hidden = false;
+  prog.textContent = `${num} : lecture par Claude en cours — une à trois minutes selon le volume…`;
+  noter(`${num} : passe API lancée sur ${pieces.map(p => p.nom).join(", ")}.`, "api");
+  try {
+    const r = await fetch("/api/lire", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: etat.token, numero: num, pieces }) });
+    const j = await r.json().catch(() => ({}));
+    if(!r.ok || !j.proposition) throw new Error(j.erreur || ("HTTP " + r.status));
+    (j.journal || []).forEach(l => noter(`${num} : ${l}`, "api"));
+    const P = j.proposition;
+    const c = etat.controle[num] || { lectures: [], cle: cleImmeuble(i) };
+    c.proposition = {
+      mode: "api", piecesLues: pieces.map(p => ({ nom: p.nom, type: p.type, pages: 0, scanne: false })),
+      designationTitre: P.designationTitre || [], effetRelatif: P.effetRelatif || [], chaine: P.chaine || [],
+      origine: P.origine || "", alerteTrentenaire: P.alerteTrentenaire || null,
+      origineAnterieure: P.origineAnterieure || [], servitudes: P.servitudes || [],
+      vigilance: P.vigilance || [], aDemander: P.aDemander || [], actesManquants: [],
+      extraits: { publications: [], actes: [], designation: [], etatsReponse: [], vigilances: [], api: P.extraits || [] },
+      modele: j.modele, usage: j.usage,
+    };
+    c.mode = "api"; c.valide = false;
+    etat.controle[num] = c;
+    sauverControle(); dessinerAnalyse(); avisRendu();
+    prog.textContent = `${num} : proposition de Claude reçue (${j.modele || "modèle"}${j.usage ? ", " + (j.usage.input_tokens || 0) + " jetons lus" : ""}). À contrôler.`;
+    noter(`${num} : proposition API — ${c.proposition.chaine.length} maillon(s), ${c.proposition.vigilance.filter(v => v.etat === "carmin").length} carmin.`, "api");
+    ouvrirControle(num);
+  } catch(e){
+    prog.textContent = `${num} : lecture par Claude échouée — ${e.message}`;
+    noter(`${num} : passe API en échec — ${e.message}. Vérifier ANTHROPIC_API_KEY dans Vercel et vercel.json.`, "api");
+  }
+}
+
 function dessinerAnalyse(){
   const tb = E("corpsAnalyse"); tb.innerHTML = "";
   retenus().forEach(i => {
@@ -2363,13 +2462,17 @@ function dessinerAnalyse(){
       ? `<span class="ok">validé</span> le ${c.valideLe ? new Date(c.valideLe).toLocaleDateString("fr-FR") : ""}${c.validePar ? " par " + echapper(c.validePar) : ""}${c.piecesModifiees ? ' · <span class="anom">pièces modifiées depuis</span>' : ""}`
       : P.chaine ? `${P.chaine.length} maillon(s) · ${P.effetRelatif.length} formalité(s) · <span class="${carmin ? "anom" : ""}">${carmin} carmin</span>${P.alerteTrentenaire ? ' · <span class="anom">alerte trentenaire</span>' : ""}${(P.actesManquants || []).length ? ` · ${P.actesManquants.length} acte(s) à requérir` : ""}` : "—";
     tr.innerHTML = `<td class="num">${i.numero || "—"}</td><td style="font-size:12.5px">${lect || '<span class="puces">aucune pièce lue</span>'}</td>
-      <td><span class="mode ${c.mode === "automatique" ? "auto" : c.mode === "mixte" ? "mixte" : "manuel"}">${LIB_MODE[c.mode] || c.mode || "—"}</span></td>
+      <td><span class="mode ${classeMode(c.mode)}">${LIB_MODE[c.mode] || c.mode || "—"}</span></td>
       <td style="font-size:12.5px">${res}</td>
       <td>${c.valide ? '<span class="mode valide">validé</span>' : '<span class="mode mixte">à contrôler</span>'}</td>
-      <td><button class="sec" data-ctrl="${echapper(num)}" style="padding:3px 9px;font-size:12px">${c.valide ? "Revoir" : "Contrôler"}</button></td>`;
+      <td style="white-space:nowrap"><button class="sec" data-ctrl="${echapper(num)}" style="padding:3px 9px;font-size:12px">${c.valide ? "Revoir" : "Contrôler"}</button>
+        ${(c.lectures || []).some(L => L.scanne) ? `<button class="sec" data-ocr="${echapper(num)}" style="padding:3px 9px;font-size:12px;margin-left:4px" title="Reconnaissance de caractères gratuite, dans le navigateur — lent, résultat pauvre sur du manuscrit">Reconnaître</button>` : ""}
+        <button class="sec" data-api="${echapper(num)}" style="padding:3px 9px;font-size:12px;margin-left:4px" title="Lecture des pièces par Claude via /api/lire — facturée à l'usage, à réserver à ce qui résiste">Claude</button></td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll("button[data-ctrl]").forEach(b => b.onclick = () => ouvrirControle(b.dataset.ctrl));
+  tb.querySelectorAll("button[data-ocr]").forEach(b => b.onclick = () => reconnaitreImmeuble(b.dataset.ocr));
+  tb.querySelectorAll("button[data-api]").forEach(b => b.onclick = () => lireParClaude(b.dataset.api));
   tb.querySelectorAll("button[data-man]").forEach(b => b.onclick = () => {
     const num = b.dataset.man;
     etat.controle[num] = { cle: "", proposition: analyserImmeuble(num, [], [], new Date()), lectures: [], mode: "manuel", valide: false, analyse: null };
@@ -2394,6 +2497,7 @@ function ouvrirControle(num){
   if(X.actes.length){ srcs.push("<h4>Actes cités</h4>"); X.actes.forEach(a => srcs.push(`<div class="src"><span class="ou">${echapper(a.source)} p. ${a.page}</span> — ${dateFR(a.date)} · ${echapper(a.nature)} · ${echapper(a.notaire)}${a.lieu ? ", " + echapper(a.lieu) : ""}<br>${echapper(a.extrait)}</div>`)); }
   if(X.designation.length){ srcs.push("<h4>Désignation au titre</h4>"); X.designation.forEach(d => srcs.push(`<div class="src"><span class="ou">${echapper(d.source)} p. ${d.page}</span> — ${echapper(d.parcelle)} · ${d.contenance}<br>${echapper(d.extrait)}</div>`)); }
   if(X.vigilances.length){ srcs.push("<h4>Mentions de vigilance</h4>"); X.vigilances.forEach(v => v.extraits.forEach(e => srcs.push(`<div class="src ${/donation|inali|tontine|rém|collect|charges|capacit|soulte/i.test(v.verification) ? "carmin" : "orange"}"><span class="ou">${echapper(e.source)} p. ${e.page}</span> — ${echapper(v.verification)}<br>${echapper(e.extrait)}</div>`))); }
+  if(X.api && X.api.length){ srcs.push("<h4>Passages transcrits par Claude</h4>"); X.api.forEach(e => srcs.push(`<div class="src"><span class="ou">${echapper(e.source || "")}${e.page ? " p. " + e.page : ""}</span><br>${echapper(e.texte || "")}</div>`)); }
   (X.etatsReponse || []).forEach(e => srcs.push(`<div class="src orange"><span class="ou">${echapper(e.nom)}</span> — état-réponse ANF ${echapper(e.dossier || "")} ${echapper(e.bureau || "")}${e.delivre ? ", délivré le " + dateFR(e.delivre) : ""} : <b>${e.formalitesFlux ?? "?"} formalité(s)</b> au flux, <b>${e.faces} face(s) de copies de fiches en image</b>${e.parcelles.length ? " · parcelles visées : " + echapper(e.parcelles.join(" ")) : ""}${e.fiches.length ? " · fiches " + echapper(e.fiches.join(", ")) : ""}. Les fiches ne se lisent qu'à la main.</div>`));
   if(!srcs.length) srcs.push(`<div class="src">${manuel ? "Saisie manuelle : aucune pièce lue automatiquement." : "Aucune mention relevée dans les pièces lues."}</div>`);
   (c.lectures || []).filter(L => L.scanne).forEach(L => srcs.push(`<div class="src carmin"><span class="ou">${echapper(L.nom)}</span> — PDF scanné sans couche texte (${L.caracteres || 0} caractères sur ${L.pages.length || L.pages} pages) : hors flux automatique, à saisir à la main ou à requérir en copie numérique.</div>`));
@@ -2402,7 +2506,7 @@ function ouvrirControle(num){
   pan.innerHTML = `
     <div class="ligneControles" style="margin-top:16px;align-items:center">
       <h3 style="font-size:16px">Immeuble ${echapper(num)}${i.libelle ? " — " + echapper(i.libelle) : ""}</h3>
-      <span class="mode ${c.mode === "automatique" ? "auto" : c.mode === "mixte" ? "mixte" : "manuel"}">${LIB_MODE[c.mode] || c.mode}</span>
+      <span class="mode ${classeMode(c.mode)}">${LIB_MODE[c.mode] || c.mode}</span>
       ${c.valide ? '<span class="mode valide">validé</span>' : ""}
       <span style="margin-left:auto"></span>
       <label class="champ" for="operateur" style="margin:0">Validé par</label>
