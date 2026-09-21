@@ -1,5 +1,7 @@
 {
   "functions": {
-    "api/lire.js": { "maxDuration": 300, "memory": 1024 }
+    "api/lire.js": {
+      "maxDuration": 300
+    }
   }
 }
